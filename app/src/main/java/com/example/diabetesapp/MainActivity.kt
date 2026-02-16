@@ -2,6 +2,7 @@ package com.example.diabetesapp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import com.example.diabetesapp.ui.components.BottomNavBar
 import com.example.diabetesapp.ui.screens.*
 import com.example.diabetesapp.ui.theme.DiabetesAppTheme
@@ -28,20 +28,51 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen() {
+    // 1. Create a Stack to remember navigation history
+    var backStack by remember { mutableStateOf(listOf("home")) }
+    val currentScreen = backStack.last()
+
+    // Bottom nav needs to know which main tab is active
     var selectedRoute by remember { mutableStateOf("home") }
-    var currentScreen by remember { mutableStateOf("home") }
+
+    // 2. Intercept the hardware Back Button
+    BackHandler(enabled = backStack.size > 1) {
+        backStack = backStack.dropLast(1)
+        val previousScreen = backStack.last()
+        // Sync the bottom nav bar if we go back to a main tab
+        if (previousScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+            selectedRoute = previousScreen
+        }
+    }
+
+    // 3. Helper function to navigate forward
+    val navigateTo = { route: String ->
+        if (currentScreen != route) {
+            backStack = backStack + route
+            if (route in listOf("home", "bolus", "history", "stats", "menu")) {
+                selectedRoute = route
+            }
+        }
+    }
+
+    // 4. Helper function to go back programmatically (top left arrows)
+    val navigateBack = {
+        if (backStack.size > 1) {
+            backStack = backStack.dropLast(1)
+            val previousScreen = backStack.last()
+            if (previousScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+                selectedRoute = previousScreen
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            // Show bottom nav on all main screens, hide only on detail screens
             if (currentScreen in listOf("home", "bolus", "history", "stats", "menu")) {
                 BottomNavBar(
                     selectedRoute = selectedRoute,
-                    onNavigate = { route -> 
-                        selectedRoute = route
-                        currentScreen = route
-                    }
+                    onNavigate = { route -> navigateTo(route) }
                 )
             }
         }
@@ -49,45 +80,35 @@ fun MainScreen() {
         when (currentScreen) {
             "home" -> HomeScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { currentScreen = "calculate_bolus" }
-            )
-            "bolus" -> BolusScreen(
-                modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { currentScreen = "calculate_bolus" }
+                onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
+                onNavigateToLogReading = { navigateTo("log_reading") }
             )
             "history" -> HistoryScreen(
-                modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { currentScreen = "calculate_bolus" }
-            )
-            "stats" -> StatsScreen(
-                modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { currentScreen = "calculate_bolus" }
+                modifier = Modifier.padding(innerPadding)
             )
             "menu" -> MenuScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { currentScreen = "calculate_bolus" },
-                onNavigateToBolusSettings = { currentScreen = "bolus_settings" }
+                onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
+                onNavigateToBolusSettings = { navigateTo("bolus_settings") }
             )
+            // Detail Screens
             "bolus_settings" -> BolusSettingsScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateBack = { currentScreen = selectedRoute }
+                onNavigateBack = navigateBack
             )
             "calculate_bolus" -> CalculateBolusScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateBack = { currentScreen = selectedRoute }
+                onNavigateBack = navigateBack
+            )
+            "log_reading" -> LogReadingScreen(
+                modifier = Modifier.padding(innerPadding),
+                onNavigateBack = navigateBack
             )
             else -> HomeScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { currentScreen = "calculate_bolus" }
+                onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
+                onNavigateToLogReading = { navigateTo("log_reading") }
             )
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun MainScreenPreview() {
-    DiabetesAppTheme {
-        MainScreen()
     }
 }

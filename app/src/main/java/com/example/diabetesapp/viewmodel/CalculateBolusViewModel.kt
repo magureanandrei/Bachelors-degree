@@ -1,11 +1,16 @@
 package com.example.diabetesapp.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
+import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.utils.BolusCalculatorHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -27,6 +32,7 @@ data class BolusInputState(
     val notes: String = "",
     val isAdvancedExpanded: Boolean = false,
     val calculatedDose: Double? = null,
+    val standardDose: Double? = null,
     val showResult: Boolean = false,
 
     // --- THESIS: SPORT SIMULATOR VARIABLES ---
@@ -48,7 +54,8 @@ data class BolusInputState(
     val showResultDialog: Boolean = false
 )
 
-class CalculateBolusViewModel : ViewModel() {
+class CalculateBolusViewModel(private val repository: BolusLogRepository) : ViewModel() {
+
     private val _inputState = MutableStateFlow(BolusInputState())
     val inputState: StateFlow<BolusInputState> = _inputState.asStateFlow()
 
@@ -135,7 +142,7 @@ class CalculateBolusViewModel : ViewModel() {
     fun calculateBolus() {
         val state = _inputState.value
 
-        // Safety Validation (Kept from your original code)
+        // Safety Validation
         val bg = state.bloodGlucose.toDoubleOrNull()
         val carbs = state.carbs.toDoubleOrNull() ?: 0.0
 
@@ -159,25 +166,26 @@ class CalculateBolusViewModel : ViewModel() {
         val carbs = state.carbs.toFloatOrNull() ?: 0f
         val activeInsulin = state.activeInsulin.toFloatOrNull() ?: 0f
 
-        // 1. Calculate Standard Bolus using your Helper
+        // 1. Calculate Standard Bolus using your Helper (Cast to Double)
         val standardBolus = BolusCalculatorHelper.calculateBolus(
             carbs = carbs,
             currentBG = bg,
             settings = dummySettings,
             activeInsulin = activeInsulin
-        )
+        ).toDouble()
 
         // 2. Apply the Thesis Sport Algorithm (If Active)
         val finalDose = if (state.isSportModeActive) {
-            applySportReduction(standardBolus.toDouble(), state)
+            applySportReduction(standardBolus, state)
         } else {
-            standardBolus.toDouble()
+            standardBolus
         }
 
         // 3. Ensure dose is not negative
         val safeDose = maxOf(0.0, finalDose)
 
         _inputState.value = _inputState.value.copy(
+            standardDose = standardBolus, // Save this for the database graph!
             calculatedDose = safeDose,
             showResult = true,
             showResultDialog = true
@@ -243,8 +251,29 @@ class CalculateBolusViewModel : ViewModel() {
 
     fun logEntry() {
         val state = _inputState.value
-        // Just clear the form for the playground
-        resetForm()
+
+        // Ensure we actually have calculated numbers before trying to save
+        if (state.calculatedDose == null || state.standardDose == null) return
+
+        // 1. Create the Database Object
+        val log = BolusLog(
+            timestamp = System.currentTimeMillis(),
+            bloodGlucose = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
+            carbs = state.carbs.toDoubleOrNull() ?: 0.0,
+            standardDose = state.standardDose,
+            finalDose = state.calculatedDose,
+            isSportModeActive = state.isSportModeActive,
+            sportType = if (state.isSportModeActive) state.sportType else null,
+            sportIntensity = if (state.isSportModeActive) state.sportIntensity else null,
+            sportDuration = if (state.isSportModeActive) state.sportDurationMinutes else null,
+            notes = state.notes
+        )
+
+        // 2. Save it to Room in a Coroutine, then reset the UI
+        viewModelScope.launch {
+            repository.insert(log)
+            resetForm()
+        }
     }
 
     private fun resetForm() {
@@ -256,5 +285,15 @@ class CalculateBolusViewModel : ViewModel() {
             currentDate = _inputState.value.currentDate,
             isSportModeActive = currentSportMode
         )
+    }
+}
+
+class CalculateBolusViewModelFactory(private val repository: BolusLogRepository) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(CalculateBolusViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return CalculateBolusViewModel(repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

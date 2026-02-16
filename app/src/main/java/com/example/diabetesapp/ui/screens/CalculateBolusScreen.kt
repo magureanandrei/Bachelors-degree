@@ -28,14 +28,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.viewmodel.CalculateBolusViewModel
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.diabetesapp.data.database.BolusDatabase
+import com.example.diabetesapp.data.repository.BolusLogRepository
+import com.example.diabetesapp.viewmodel.CalculateBolusViewModelFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalculateBolusScreen(
     modifier: Modifier = Modifier,
-    onNavigateBack: () -> Unit = {},
-    viewModel: CalculateBolusViewModel = viewModel()
+    onNavigateBack: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val database = BolusDatabase.getDatabase(context)
+    val repository = BolusLogRepository(database.bolusLogDao())
+
+    val viewModel: CalculateBolusViewModel = viewModel(
+        factory = CalculateBolusViewModelFactory(repository)
+    )
+
     val inputState by viewModel.inputState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
