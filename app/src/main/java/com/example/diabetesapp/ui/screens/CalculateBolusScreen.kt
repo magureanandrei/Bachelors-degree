@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.viewmodel.CalculateBolusViewModel
-import com.example.diabetesapp.viewmodel.InputMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,177 +36,6 @@ fun CalculateBolusScreen(
     onNavigateBack: () -> Unit = {},
     viewModel: CalculateBolusViewModel = viewModel()
 ) {
-    @Composable
-    fun CalculatorView(
-        inputState: com.example.diabetesapp.viewmodel.BolusInputState,
-        viewModel: CalculateBolusViewModel,
-        onNavigateBack: () -> Unit = {}
-    ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Primary Inputs Card (Kept mostly the same)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    Text(
-                        text = "Standard Inputs",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00897B)
-                    )
-
-                    LargeInputField(
-                        label = "Current Blood Glucose",
-                        value = inputState.bloodGlucose,
-                        onValueChange = { viewModel.updateBloodGlucose(it) },
-                        unit = "mg/dL",
-                        placeholder = "Enter BG",
-                        errorMessage = inputState.bloodGlucoseError
-                    )
-
-                    LargeInputField(
-                        label = "Carbohydrates",
-                        value = inputState.carbs,
-                        onValueChange = { viewModel.updateCarbs(it) },
-                        unit = "g",
-                        placeholder = "Enter carbs",
-                        errorMessage = inputState.carbsError
-                    )
-                }
-            }
-
-            // --- NEW THESIS FEATURE: SPORT SIMULATOR ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)), // Light teal background
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Thesis Sport Algorithm",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF00695C)
-                        )
-                        Switch(
-                            checked = inputState.isSportModeActive,
-                            onCheckedChange = { viewModel.toggleSportMode(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF00897B)
-                            )
-                        )
-                    }
-
-                    // Only show sliders if Sport Mode is ON
-                    AnimatedVisibility(visible = inputState.isSportModeActive) {
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-
-                            // 1. Sport Type (Aerobic vs Anaerobic)
-                            Text(
-                                text = "Activity Type (T1DEXIP Logic)",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF00695C)
-                            )
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = { viewModel.updateSportType("Aerobic") },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (inputState.sportType == "Aerobic") Color(0xFF00897B) else Color.Transparent,
-                                        contentColor = if (inputState.sportType == "Aerobic") Color.White else Color(0xFF00897B)
-                                    )
-                                ) { Text("Aerobic (Run)") }
-
-                                OutlinedButton(
-                                    onClick = { viewModel.updateSportType("Anaerobic") },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (inputState.sportType == "Anaerobic") Color(0xFF00897B) else Color.Transparent,
-                                        contentColor = if (inputState.sportType == "Anaerobic") Color.White else Color(0xFF00897B)
-                                    )
-                                ) { Text("Anaerobic (Weights)") }
-                            }
-
-                            // 2. Intensity Slider
-                            Text(
-                                text = "Intensity: ${inputState.sportIntensity}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF00695C)
-                            )
-                            Slider(
-                                value = inputState.sportIntensityValue,
-                                onValueChange = { viewModel.updateSportIntensity(it) },
-                                valueRange = 1f..3f,
-                                steps = 1, // Creates 3 snap points (Low, Med, High)
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color(0xFF00897B),
-                                    activeTrackColor = Color(0xFF00897B)
-                                )
-                            )
-
-                            // 3. Duration Slider
-                            Text(
-                                text = "Duration: ${inputState.sportDurationMinutes.toInt()} mins",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF00695C)
-                            )
-                            Slider(
-                                value = inputState.sportDurationMinutes,
-                                onValueChange = { viewModel.updateSportDuration(it) },
-                                valueRange = 0f..120f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color(0xFF00897B),
-                                    activeTrackColor = Color(0xFF00897B)
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-            // --- END THESIS FEATURE ---
-
-            // Calculate Button
-            Button(
-                onClick = { viewModel.calculateBolus() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF00897B)
-                ),
-                shape = RoundedCornerShape(12.dp),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-            ) {
-                Text(
-                    text = "Calculate Dose",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-
     val inputState by viewModel.inputState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -228,7 +56,7 @@ fun CalculateBolusScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Calculate Bolus",
+                        text = "Bolus Simulator",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 20.sp
                     )
@@ -252,35 +80,18 @@ fun CalculateBolusScreen(
                 .fillMaxSize()
                 .background(Color(0xFFF5F5F5))
                 .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Tab Selector
-            ModeSelectorTabs(
-                selectedMode = inputState.inputMode,
-                onModeSelected = { viewModel.setInputMode(it) }
+
+            // The Main Calculator View
+            CalculatorView(
+                inputState = inputState,
+                viewModel = viewModel
             )
 
-            // Content based on selected mode
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                when (inputState.inputMode) {
-                    InputMode.CALCULATE -> CalculatorView(
-                        inputState = inputState,
-                        viewModel = viewModel,
-                        onNavigateBack = onNavigateBack
-                    )
-                    InputMode.MANUAL -> ManualInputView(
-                        inputState = inputState,
-                        viewModel = viewModel
-                    )
-                }
-            }
-
-            // Advanced Confirmation Dialog
+            // Advanced Confirmation Dialog (Optional, kept for safety checks)
             if (inputState.showAdvancedConfirmationDialog) {
                 AdvancedConfirmationDialog(
                     onDismiss = { viewModel.dismissAdvancedConfirmationDialog() },
@@ -292,10 +103,12 @@ fun CalculateBolusScreen(
                 )
             }
 
-            // Result Dialog
+            // The New Thesis Result Dialog
             if (inputState.showResultDialog && inputState.calculatedDose != null) {
                 ResultDialog(
                     calculatedDose = inputState.calculatedDose!!,
+                    isSportModeActive = inputState.isSportModeActive,
+                    sportLog = inputState.sportReductionLog,
                     onDismiss = { viewModel.dismissResultDialog() },
                     onLogAndSave = {
                         viewModel.logEntry()
@@ -312,87 +125,9 @@ fun CalculateBolusScreen(
 }
 
 @Composable
-fun ModeSelectorTabs(
-    selectedMode: InputMode,
-    onModeSelected: (InputMode) -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            // Calculator Tab
-            Button(
-                onClick = { onModeSelected(InputMode.CALCULATE) },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedMode == InputMode.CALCULATE)
-                        Color(0xFF00897B)
-                    else
-                        Color.Transparent,
-                    contentColor = if (selectedMode == InputMode.CALCULATE)
-                        Color.White
-                    else
-                        Color(0xFF00897B)
-                ),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = if (selectedMode == InputMode.CALCULATE) 2.dp else 0.dp
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(
-                    text = "CALCULATOR",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            // Manual Input Tab
-            Button(
-                onClick = { onModeSelected(InputMode.MANUAL) },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selectedMode == InputMode.MANUAL)
-                        Color(0xFF00897B)
-                    else
-                        Color.Transparent,
-                    contentColor = if (selectedMode == InputMode.MANUAL)
-                        Color.White
-                    else
-                        Color(0xFF00897B)
-                ),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = if (selectedMode == InputMode.MANUAL) 2.dp else 0.dp
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(
-                    text = "MANUAL INPUT",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun CalculatorView(
     inputState: com.example.diabetesapp.viewmodel.BolusInputState,
-    viewModel: CalculateBolusViewModel,
-    onNavigateBack: () -> Unit = {}
+    viewModel: CalculateBolusViewModel
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -409,7 +144,7 @@ fun CalculatorView(
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
-                    text = "Primary Inputs",
+                    text = "Standard Inputs",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF00897B)
@@ -436,6 +171,109 @@ fun CalculatorView(
                 )
             }
         }
+
+        // --- NEW THESIS FEATURE: SPORT SIMULATOR ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)), // Light teal background
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Thesis Sport Algorithm",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF00695C)
+                    )
+                    Switch(
+                        checked = inputState.isSportModeActive,
+                        onCheckedChange = { viewModel.toggleSportMode(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF00897B)
+                        )
+                    )
+                }
+
+                // Only show sliders if Sport Mode is ON
+                AnimatedVisibility(visible = inputState.isSportModeActive) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                        // 1. Sport Type (Aerobic vs Anaerobic)
+                        Text(
+                            text = "Activity Type (T1DEXIP Logic)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00695C)
+                        )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { viewModel.updateSportType("Aerobic") },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (inputState.sportType == "Aerobic") Color(0xFF00897B) else Color.Transparent,
+                                    contentColor = if (inputState.sportType == "Aerobic") Color.White else Color(0xFF00897B)
+                                )
+                            ) { Text("Aerobic (Run)") }
+
+                            OutlinedButton(
+                                onClick = { viewModel.updateSportType("Anaerobic") },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (inputState.sportType == "Anaerobic") Color(0xFF00897B) else Color.Transparent,
+                                    contentColor = if (inputState.sportType == "Anaerobic") Color.White else Color(0xFF00897B)
+                                )
+                            ) { Text("Anaerobic (Weights)") }
+                        }
+
+                        // 2. Intensity Slider
+                        Text(
+                            text = "Intensity: ${inputState.sportIntensity}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00695C)
+                        )
+                        Slider(
+                            value = inputState.sportIntensityValue,
+                            onValueChange = { viewModel.updateSportIntensity(it) },
+                            valueRange = 1f..3f,
+                            steps = 1, // Creates 3 snap points (Low, Med, High)
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF00897B),
+                                activeTrackColor = Color(0xFF00897B)
+                            )
+                        )
+
+                        // 3. Duration Slider
+                        Text(
+                            text = "Duration: ${inputState.sportDurationMinutes.toInt()} mins",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00695C)
+                        )
+                        Slider(
+                            value = inputState.sportDurationMinutes,
+                            onValueChange = { viewModel.updateSportDuration(it) },
+                            valueRange = 0f..120f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF00897B),
+                                activeTrackColor = Color(0xFF00897B)
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        // --- END THESIS FEATURE ---
 
         // Advanced Adjustments - Collapsible
         Card(
@@ -518,45 +356,6 @@ fun CalculatorView(
             }
         }
 
-        // Future Feature Placeholder
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Sport Mode",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF757575)
-                    )
-                    Text(
-                        text = "Coming soon",
-                        fontSize = 12.sp,
-                        color = Color(0xFF9E9E9E)
-                    )
-                }
-                Switch(
-                    checked = false,
-                    onCheckedChange = null,
-                    enabled = false,
-                    colors = SwitchDefaults.colors(
-                        disabledCheckedThumbColor = Color(0xFFBDBDBD),
-                        disabledUncheckedThumbColor = Color(0xFFBDBDBD)
-                    )
-                )
-            }
-        }
-
         // Calculate Button
         Button(
             onClick = { viewModel.calculateBolus() },
@@ -570,7 +369,7 @@ fun CalculatorView(
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
         ) {
             Text(
-                text = "Calculate Dose",
+                text = "Simulate Dose",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -578,146 +377,6 @@ fun CalculatorView(
     }
 }
 
-@Composable
-fun ManualInputView(
-    inputState: com.example.diabetesapp.viewmodel.BolusInputState,
-    viewModel: CalculateBolusViewModel
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Manual Input Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                Text(
-                    text = "Log Insulin Dose",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF00897B)
-                )
-
-                // Manual Insulin Input
-                LargeInputField(
-                    label = "Total Insulin Dose",
-                    value = inputState.manualInsulin,
-                    onValueChange = { viewModel.updateManualInsulin(it) },
-                    unit = "U",
-                    placeholder = "Enter dose",
-                    errorMessage = inputState.manualInsulinError
-                )
-
-                HorizontalDivider(color = Color(0xFFE0E0E0))
-
-                // Time Input
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Date",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF424242)
-                        )
-                        OutlinedTextField(
-                            value = inputState.currentDate,
-                            onValueChange = { viewModel.updateDate(it) },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("DD/MM/YYYY", fontSize = 14.sp) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF00897B),
-                                unfocusedBorderColor = Color(0xFFCCCCCC)
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Time",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF424242)
-                        )
-                        OutlinedTextField(
-                            value = inputState.currentTime,
-                            onValueChange = { viewModel.updateTime(it) },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("HH:MM", fontSize = 14.sp) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF00897B),
-                                unfocusedBorderColor = Color(0xFFCCCCCC)
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true
-                        )
-                    }
-                }
-
-                // Notes Input
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Notes / Tags",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF424242)
-                    )
-                    OutlinedTextField(
-                        value = inputState.notes,
-                        onValueChange = { viewModel.updateNotes(it) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(100.dp),
-                        placeholder = { Text("Add notes or tags...", fontSize = 14.sp) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF00897B),
-                            unfocusedBorderColor = Color(0xFFCCCCCC)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        maxLines = 4
-                    )
-                }
-            }
-        }
-
-        // Log Entry Button
-        Button(
-            onClick = { viewModel.logEntry() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF00897B)
-            ),
-            shape = RoundedCornerShape(12.dp),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-        ) {
-            Text(
-                text = "Log Entry",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
 
 @Composable
 fun LargeInputField(
@@ -898,6 +557,8 @@ fun AdvancedConfirmationDialog(
 @Composable
 fun ResultDialog(
     calculatedDose: Double,
+    isSportModeActive: Boolean,
+    sportLog: String,
     onDismiss: () -> Unit,
     onLogAndSave: () -> Unit,
     onGoHome: () -> Unit
@@ -905,17 +566,12 @@ fun ResultDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Suggested Dose",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    color = Color(0xFF2E7D32)
-                )
-            }
+            Text(
+                text = if (isSportModeActive) "Sport Adjusted Dose" else "Standard Dose",
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = if (isSportModeActive) Color(0xFF00695C) else Color(0xFF2E7D32)
+            )
         },
         text = {
             Column(
@@ -926,7 +582,9 @@ fun ResultDialog(
                 // Large dose display
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSportModeActive) Color(0xFFE0F2F1) else Color(0xFFE8F5E9)
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(
@@ -939,23 +597,47 @@ fun ResultDialog(
                             text = "%.1f".format(java.util.Locale.US, calculatedDose),
                             fontSize = 48.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32)
+                            color = if (isSportModeActive) Color(0xFF00695C) else Color(0xFF2E7D32)
                         )
                         Text(
                             text = "Units",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFF2E7D32)
+                            color = if (isSportModeActive) Color(0xFF00695C) else Color(0xFF2E7D32)
                         )
                     }
                 }
 
-                Text(
-                    text = "Please verify the dose before administering.",
-                    fontSize = 14.sp,
-                    color = Color(0xFF757575),
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
+                // --- THE THESIS MATH REVEAL ---
+                if (isSportModeActive && sportLog.isNotBlank()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Algorithm Breakdown:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Gray
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = sportLog,
+                                fontSize = 12.sp,
+                                color = Color.DarkGray,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Standard calculation based on ICR and ISF.",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
             }
         },
         confirmButton = {
@@ -963,41 +645,22 @@ fun ResultDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Log & Save Button
                 Button(
                     onClick = onLogAndSave,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2E7D32)
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text(
-                        text = "Log & Save",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Complete Simulation", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
-                // Go Home Button
-                OutlinedButton(
-                    onClick = onGoHome,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFF00897B)
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF00897B)),
-                    shape = RoundedCornerShape(10.dp)
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Go Home",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Back to Editor", color = Color.Gray)
                 }
             }
         },
