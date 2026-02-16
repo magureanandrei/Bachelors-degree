@@ -12,13 +12,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/**
+ * Draft State - holds temporary user edits before saving
+ * This is the "working copy" that changes as the user types
+ */
+data class DraftSettings(
+    val insulinType: InsulinType = InsulinType.NOVORAPID,
+    val durationOfAction: String = "4.0",
+    val targetBG: String = "100",
+
+    // ICR values as strings for text field binding
+    val icrMorning: String = "10",
+    val icrNoon: String = "10",
+    val icrEvening: String = "10",
+    val icrNight: String = "10",
+
+    // ISF values as strings for text field binding
+    val isfMorning: String = "50",
+    val isfNoon: String = "50",
+    val isfEvening: String = "50",
+    val isfNight: String = "50"
+)
+
 data class BolusSettingsUiState(
-    val settings: BolusSettings = BolusSettings(),
+    val persistedSettings: BolusSettings = BolusSettings(), // Read-only: loaded from DB
+    val draftSettings: DraftSettings = DraftSettings(), // Editable: working copy
     val expandedCard: ExpandableCard? = ExpandableCard.GENERAL, // Only one card expanded at a time
     val icrTimeDependent: Boolean = false, // Toggle for ICR time segments
     val isfTimeDependent: Boolean = false,  // Toggle for ISF time segments
 
-    // Validation error states
+    // Validation error states (real-time)
     val durationError: String? = null,
     val targetBGError: String? = null,
     val icrGlobalError: String? = null,
@@ -68,8 +91,32 @@ class BolusSettingsViewModel(
 
     init {
         viewModelScope.launch {
-            repository.settings.collect { settings ->
-                _uiState.value = _uiState.value.copy(settings = settings)
+            repository.settings.collect { persistedSettings ->
+                // Only update draft state if it hasn't been modified yet
+                // On first load, populate the draft from persisted data
+                if (_uiState.value.draftSettings == DraftSettings()) {
+                    _uiState.value = _uiState.value.copy(
+                        persistedSettings = persistedSettings,
+                        draftSettings = DraftSettings(
+                            insulinType = persistedSettings.insulinType,
+                            durationOfAction = persistedSettings.durationOfAction.toString(),
+                            targetBG = persistedSettings.targetBG.toInt().toString(),
+                            icrMorning = persistedSettings.icrMorning.toInt().toString(),
+                            icrNoon = persistedSettings.icrNoon.toInt().toString(),
+                            icrEvening = persistedSettings.icrEvening.toInt().toString(),
+                            icrNight = persistedSettings.icrNight.toInt().toString(),
+                            isfMorning = persistedSettings.isfMorning.toInt().toString(),
+                            isfNoon = persistedSettings.isfNoon.toInt().toString(),
+                            isfEvening = persistedSettings.isfEvening.toInt().toString(),
+                            isfNight = persistedSettings.isfNight.toInt().toString()
+                        ),
+                        icrTimeDependent = !persistedSettings.hasUniformIcr,
+                        isfTimeDependent = !persistedSettings.hasUniformIsf
+                    )
+                } else {
+                    // Just update the persisted settings reference
+                    _uiState.value = _uiState.value.copy(persistedSettings = persistedSettings)
+                }
             }
         }
     }
@@ -82,129 +129,180 @@ class BolusSettingsViewModel(
     }
 
     fun toggleIcrTimeDependent(enabled: Boolean, globalValue: String = "") {
+        val currentDraft = _uiState.value.draftSettings
         _uiState.value = _uiState.value.copy(icrTimeDependent = enabled)
 
-        // When enabling, copy global value to all segments
+        // When enabling time-dependent mode, copy global value to all segments
         if (enabled && globalValue.isNotEmpty()) {
-            globalValue.toFloatOrNull()?.let { value ->
-                if (value > 0) {
-                    repository.updateIcrMorning(value)
-                    repository.updateIcrNoon(value)
-                    repository.updateIcrEvening(value)
-                    repository.updateIcrNight(value)
-                }
-            }
+            _uiState.value = _uiState.value.copy(
+                draftSettings = currentDraft.copy(
+                    icrMorning = globalValue,
+                    icrNoon = globalValue,
+                    icrEvening = globalValue,
+                    icrNight = globalValue
+                )
+            )
+            // Validate all segments
+            validateFieldLive(FieldType.ICR_MORNING, globalValue)
+            validateFieldLive(FieldType.ICR_NOON, globalValue)
+            validateFieldLive(FieldType.ICR_EVENING, globalValue)
+            validateFieldLive(FieldType.ICR_NIGHT, globalValue)
         }
     }
 
     fun toggleIsfTimeDependent(enabled: Boolean, globalValue: String = "") {
+        val currentDraft = _uiState.value.draftSettings
         _uiState.value = _uiState.value.copy(isfTimeDependent = enabled)
 
-        // When enabling, copy global value to all segments
+        // When enabling time-dependent mode, copy global value to all segments
         if (enabled && globalValue.isNotEmpty()) {
-            globalValue.toFloatOrNull()?.let { value ->
-                if (value > 0) {
-                    repository.updateIsfMorning(value)
-                    repository.updateIsfNoon(value)
-                    repository.updateIsfEvening(value)
-                    repository.updateIsfNight(value)
-                }
-            }
+            _uiState.value = _uiState.value.copy(
+                draftSettings = currentDraft.copy(
+                    isfMorning = globalValue,
+                    isfNoon = globalValue,
+                    isfEvening = globalValue,
+                    isfNight = globalValue
+                )
+            )
+            // Validate all segments
+            validateFieldLive(FieldType.ISF_MORNING, globalValue)
+            validateFieldLive(FieldType.ISF_NOON, globalValue)
+            validateFieldLive(FieldType.ISF_EVENING, globalValue)
+            validateFieldLive(FieldType.ISF_NIGHT, globalValue)
         }
     }
 
+    /**
+     * Update draft state for global ICR (simple mode)
+     * Updates all 4 segments with the same value
+     */
     fun updateGlobalIcr(value: String) {
-        // Update all 4 segments with the same value
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) {
-                repository.updateIcrMorning(v)
-                repository.updateIcrNoon(v)
-                repository.updateIcrEvening(v)
-                repository.updateIcrNight(v)
-            }
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(
+                icrMorning = value,
+                icrNoon = value,
+                icrEvening = value,
+                icrNight = value
+            )
+        )
+        validateFieldLive(FieldType.ICR_GLOBAL, value)
     }
 
+    /**
+     * Update draft state for global ISF (simple mode)
+     * Updates all 4 segments with the same value
+     */
     fun updateGlobalIsf(value: String) {
-        // Update all 4 segments with the same value
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) {
-                repository.updateIsfMorning(v)
-                repository.updateIsfNoon(v)
-                repository.updateIsfEvening(v)
-                repository.updateIsfNight(v)
-            }
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(
+                isfMorning = value,
+                isfNoon = value,
+                isfEvening = value,
+                isfNight = value
+            )
+        )
+        validateFieldLive(FieldType.ISF_GLOBAL, value)
     }
 
+    /**
+     * Update draft state for insulin type
+     * This can be saved immediately as it's a simple dropdown selection
+     */
     fun updateInsulinType(type: InsulinType) {
-        repository.updateInsulinType(type)
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(insulinType = type)
+        )
     }
 
+    /**
+     * Update draft state for duration of action
+     */
     fun updateDurationOfAction(duration: String) {
-        duration.toFloatOrNull()?.let { value ->
-            if (value > 0 && value <= 24) { // Reasonable range: 0-24 hours
-                repository.updateDurationOfAction(value)
-            }
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(durationOfAction = duration)
+        )
+        validateFieldLive(FieldType.DURATION, duration)
     }
 
-    // ICR update methods for 4 time segments
+    // ICR update methods for 4 time segments - UPDATE DRAFT ONLY
     fun updateIcrMorning(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIcrMorning(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(icrMorning = value)
+        )
+        validateFieldLive(FieldType.ICR_MORNING, value)
     }
 
     fun updateIcrNoon(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIcrNoon(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(icrNoon = value)
+        )
+        validateFieldLive(FieldType.ICR_NOON, value)
     }
 
     fun updateIcrEvening(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIcrEvening(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(icrEvening = value)
+        )
+        validateFieldLive(FieldType.ICR_EVENING, value)
     }
 
     fun updateIcrNight(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIcrNight(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(icrNight = value)
+        )
+        validateFieldLive(FieldType.ICR_NIGHT, value)
     }
 
-    // ISF update methods for 4 time segments
+    // ISF update methods for 4 time segments - UPDATE DRAFT ONLY
     fun updateIsfMorning(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIsfMorning(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(isfMorning = value)
+        )
+        validateFieldLive(FieldType.ISF_MORNING, value)
     }
 
     fun updateIsfNoon(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIsfNoon(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(isfNoon = value)
+        )
+        validateFieldLive(FieldType.ISF_NOON, value)
     }
 
     fun updateIsfEvening(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIsfEvening(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(isfEvening = value)
+        )
+        validateFieldLive(FieldType.ISF_EVENING, value)
     }
 
     fun updateIsfNight(value: String) {
-        value.toFloatOrNull()?.let { v ->
-            if (v > 0) repository.updateIsfNight(v)
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(isfNight = value)
+        )
+        validateFieldLive(FieldType.ISF_NIGHT, value)
     }
 
+    /**
+     * Update draft state for target BG
+     */
     fun updateTargetBG(target: String) {
-        target.toFloatOrNull()?.let { value ->
-            if (value > 0) {
-                repository.updateTargetBG(value)
-            }
-        }
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(
+            draftSettings = currentDraft.copy(targetBG = target)
+        )
+        validateFieldLive(FieldType.TARGET_BG, target)
     }
 
     fun isCardExpanded(card: ExpandableCard): Boolean {
@@ -304,8 +402,71 @@ class BolusSettingsViewModel(
     }
 
     /**
-     * Validate and save all settings
+     * Commit the draft state to the repository (database/SharedPreferences)
+     * This is the ONLY method that writes to persistent storage
      */
+    fun saveSettings() {
+        val draft = _uiState.value.draftSettings
+
+        // Re-validate all fields before saving
+        if (!areAllFieldsValid()) {
+            _uiState.value = _uiState.value.copy(
+                saveMessage = "Please fix all validation errors before saving"
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(isSaving = true)
+
+                // Convert draft strings to floats and save to repository
+                val durationValue = draft.durationOfAction.toFloatOrNull() ?: 4.0f
+                val targetBGValue = draft.targetBG.toFloatOrNull() ?: 100f
+
+                // Save all values to repository in one batch
+                repository.updateInsulinType(draft.insulinType)
+                repository.updateDurationOfAction(durationValue)
+                repository.updateTargetBG(targetBGValue)
+
+                // Save ICR values
+                draft.icrMorning.toFloatOrNull()?.let { repository.updateIcrMorning(it) }
+                draft.icrNoon.toFloatOrNull()?.let { repository.updateIcrNoon(it) }
+                draft.icrEvening.toFloatOrNull()?.let { repository.updateIcrEvening(it) }
+                draft.icrNight.toFloatOrNull()?.let { repository.updateIcrNight(it) }
+
+                // Save ISF values
+                draft.isfMorning.toFloatOrNull()?.let { repository.updateIsfMorning(it) }
+                draft.isfNoon.toFloatOrNull()?.let { repository.updateIsfNoon(it) }
+                draft.isfEvening.toFloatOrNull()?.let { repository.updateIsfEvening(it) }
+                draft.isfNight.toFloatOrNull()?.let { repository.updateIsfNight(it) }
+
+                android.util.Log.d("BolusSettings", "=== Settings Saved Successfully ===")
+                android.util.Log.d("BolusSettings", "Duration: ${draft.durationOfAction} hours")
+                android.util.Log.d("BolusSettings", "Target BG: ${draft.targetBG} mg/dL")
+                android.util.Log.d("BolusSettings", "ICR Morning: 1:${draft.icrMorning}")
+                android.util.Log.d("BolusSettings", "ISF Morning: 1:${draft.isfMorning}")
+
+                _uiState.value = _uiState.value.copy(
+                    saveMessage = "Settings Saved Successfully! ✓",
+                    isSaving = false
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("BolusSettings", "Error saving settings", e)
+                _uiState.value = _uiState.value.copy(
+                    saveMessage = "Error saving settings: ${e.message}",
+                    isSaving = false
+                )
+            }
+        }
+    }
+
+    /**
+     * Validate and save all settings (legacy method for compatibility)
+     * Now delegates to saveSettings() after validation
+     */
+    @Suppress("UNUSED_PARAMETER")
+    @Deprecated("Use saveSettings() instead", ReplaceWith("saveSettings()"))
     fun validateAndSave(
         durationText: String,
         targetBGText: String,
@@ -320,157 +481,16 @@ class BolusSettingsViewModel(
         isfEveningText: String,
         isfNightText: String
     ): Boolean {
-        // Clear previous errors
-        _uiState.value = _uiState.value.copy(
-            durationError = null,
-            targetBGError = null,
-            icrGlobalError = null,
-            icrMorningError = null,
-            icrNoonError = null,
-            icrEveningError = null,
-            icrNightError = null,
-            isfGlobalError = null,
-            isfMorningError = null,
-            isfNoonError = null,
-            isfEveningError = null,
-            isfNightError = null
-        )
-
-        var hasErrors = false
-
-        // Validate Duration of Action
-        val durationResult = ValidationUtils.validateDuration(durationText)
-        if (!durationResult.isValid) {
-            _uiState.value = _uiState.value.copy(durationError = durationResult.errorMessage)
-            hasErrors = true
-        }
-
-        // Validate Target BG
-        val targetBGResult = ValidationUtils.validateTargetBG(targetBGText)
-        if (!targetBGResult.isValid) {
-            _uiState.value = _uiState.value.copy(targetBGError = targetBGResult.errorMessage)
-            hasErrors = true
-        }
-
-        // Validate ICR values
-        if (!_uiState.value.icrTimeDependent) {
-            // Simple mode - validate global input
-            val icrResult = ValidationUtils.validateICR(icrGlobalText)
-            if (!icrResult.isValid) {
-                _uiState.value = _uiState.value.copy(icrGlobalError = icrResult.errorMessage)
-                hasErrors = true
-            }
-        } else {
-            // Advanced mode - validate all 4 segments
-            val icrMorningResult = ValidationUtils.validateICR(icrMorningText)
-            if (!icrMorningResult.isValid) {
-                _uiState.value = _uiState.value.copy(icrMorningError = icrMorningResult.errorMessage)
-                hasErrors = true
-            }
-
-            val icrNoonResult = ValidationUtils.validateICR(icrNoonText)
-            if (!icrNoonResult.isValid) {
-                _uiState.value = _uiState.value.copy(icrNoonError = icrNoonResult.errorMessage)
-                hasErrors = true
-            }
-
-            val icrEveningResult = ValidationUtils.validateICR(icrEveningText)
-            if (!icrEveningResult.isValid) {
-                _uiState.value = _uiState.value.copy(icrEveningError = icrEveningResult.errorMessage)
-                hasErrors = true
-            }
-
-            val icrNightResult = ValidationUtils.validateICR(icrNightText)
-            if (!icrNightResult.isValid) {
-                _uiState.value = _uiState.value.copy(icrNightError = icrNightResult.errorMessage)
-                hasErrors = true
-            }
-        }
-
-        // Validate ISF values
-        if (!_uiState.value.isfTimeDependent) {
-            // Simple mode - validate global input
-            val isfResult = ValidationUtils.validateISF(isfGlobalText)
-            if (!isfResult.isValid) {
-                _uiState.value = _uiState.value.copy(isfGlobalError = isfResult.errorMessage)
-                hasErrors = true
-            }
-        } else {
-            // Advanced mode - validate all 4 segments
-            val isfMorningResult = ValidationUtils.validateISF(isfMorningText)
-            if (!isfMorningResult.isValid) {
-                _uiState.value = _uiState.value.copy(isfMorningError = isfMorningResult.errorMessage)
-                hasErrors = true
-            }
-
-            val isfNoonResult = ValidationUtils.validateISF(isfNoonText)
-            if (!isfNoonResult.isValid) {
-                _uiState.value = _uiState.value.copy(isfNoonError = isfNoonResult.errorMessage)
-                hasErrors = true
-            }
-
-            val isfEveningResult = ValidationUtils.validateISF(isfEveningText)
-            if (!isfEveningResult.isValid) {
-                _uiState.value = _uiState.value.copy(isfEveningError = isfEveningResult.errorMessage)
-                hasErrors = true
-            }
-
-            val isfNightResult = ValidationUtils.validateISF(isfNightText)
-            if (!isfNightResult.isValid) {
-                _uiState.value = _uiState.value.copy(isfNightError = isfNightResult.errorMessage)
-                hasErrors = true
-            }
-        }
-
-        if (hasErrors) {
+        // All validation is now done in real-time
+        // Just check if there are any errors and save
+        if (!areAllFieldsValid()) {
             _uiState.value = _uiState.value.copy(
                 saveMessage = "Please fix invalid fields before saving"
             )
             return false
         }
 
-        // All validations passed - Save to repository
-        viewModelScope.launch {
-            try {
-                // Log the values being saved
-                android.util.Log.d("BolusSettings", "=== Saving Settings ===")
-                android.util.Log.d("BolusSettings", "Duration: $durationText hours")
-                android.util.Log.d("BolusSettings", "Target BG: $targetBGText mg/dL")
-
-                if (!_uiState.value.icrTimeDependent) {
-                    android.util.Log.d("BolusSettings", "ICR (Global): 1:$icrGlobalText")
-                } else {
-                    android.util.Log.d("BolusSettings", "ICR Morning: 1:$icrMorningText")
-                    android.util.Log.d("BolusSettings", "ICR Noon: 1:$icrNoonText")
-                    android.util.Log.d("BolusSettings", "ICR Evening: 1:$icrEveningText")
-                    android.util.Log.d("BolusSettings", "ICR Night: 1:$icrNightText")
-                }
-
-                if (!_uiState.value.isfTimeDependent) {
-                    android.util.Log.d("BolusSettings", "ISF (Global): 1:$isfGlobalText")
-                } else {
-                    android.util.Log.d("BolusSettings", "ISF Morning: 1:$isfMorningText")
-                    android.util.Log.d("BolusSettings", "ISF Noon: 1:$isfNoonText")
-                    android.util.Log.d("BolusSettings", "ISF Evening: 1:$isfEveningText")
-                    android.util.Log.d("BolusSettings", "ISF Night: 1:$isfNightText")
-                }
-                android.util.Log.d("BolusSettings", "======================")
-
-                // The repository already saves changes automatically via DataStore
-                // All update methods have already been called during user input
-                // This confirms the final state is persisted
-
-                _uiState.value = _uiState.value.copy(
-                    saveMessage = "Settings Saved Successfully! ✓",
-                    isSaving = false
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("BolusSettings", "Error saving settings", e)
-                _uiState.value = _uiState.value.copy(
-                    saveMessage = "Error saving settings: ${e.message}"
-                )
-            }
-        }
+        saveSettings()
         return true
     }
 }

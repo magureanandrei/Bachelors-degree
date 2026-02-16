@@ -33,7 +33,6 @@ import com.example.diabetesapp.utils.FormatUtils
 import com.example.diabetesapp.viewmodel.BolusSettingsViewModel
 import com.example.diabetesapp.viewmodel.BolusSettingsViewModelFactory
 import com.example.diabetesapp.viewmodel.ExpandableCard
-import com.example.diabetesapp.viewmodel.FieldType
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
@@ -50,7 +49,7 @@ fun BolusSettingsScreen(
     )
 
     val uiState by viewModel.uiState.collectAsState()
-    val settings = uiState.settings
+    val draftSettings = uiState.draftSettings // Editable: working copy
 
     // Coroutine scope for navigation delay
     val coroutineScope = rememberCoroutineScope()
@@ -72,43 +71,6 @@ fun BolusSettingsScreen(
         }
     }
 
-    // Remember text field values for validation
-    var durationText by remember(settings.durationOfAction) {
-        mutableStateOf(FormatUtils.formatDecimal(settings.durationOfAction))
-    }
-    var targetBGText by remember(settings.targetBG) {
-        mutableStateOf(if (settings.targetBG == 0f) "100" else settings.targetBG.toInt().toString())
-    }
-    var globalIcrText by remember(settings.icrMorning) {
-        mutableStateOf(settings.icrMorning.toInt().toString())
-    }
-    var icrMorningText by remember(settings.icrMorning) {
-        mutableStateOf(settings.icrMorning.toInt().toString())
-    }
-    var icrNoonText by remember(settings.icrNoon) {
-        mutableStateOf(settings.icrNoon.toInt().toString())
-    }
-    var icrEveningText by remember(settings.icrEvening) {
-        mutableStateOf(settings.icrEvening.toInt().toString())
-    }
-    var icrNightText by remember(settings.icrNight) {
-        mutableStateOf(settings.icrNight.toInt().toString())
-    }
-    var globalIsfText by remember(settings.isfMorning) {
-        mutableStateOf(settings.isfMorning.toInt().toString())
-    }
-    var isfMorningText by remember(settings.isfMorning) {
-        mutableStateOf(settings.isfMorning.toInt().toString())
-    }
-    var isfNoonText by remember(settings.isfNoon) {
-        mutableStateOf(settings.isfNoon.toInt().toString())
-    }
-    var isfEveningText by remember(settings.isfEvening) {
-        mutableStateOf(settings.isfEvening.toInt().toString())
-    }
-    var isfNightText by remember(settings.isfNight) {
-        mutableStateOf(settings.isfNight.toInt().toString())
-    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -162,7 +124,7 @@ fun BolusSettingsScreen(
         ) {
             // Card 1: General Configuration
             val generalValueText = if (!viewModel.isCardExpanded(ExpandableCard.GENERAL)) {
-                "${settings.insulinType.displayName}, ${settings.durationDisplay}"
+                "${draftSettings.insulinType.displayName}, ${FormatUtils.formatDurationDisplay(draftSettings.durationOfAction)}"
             } else null
 
             ExpandableSettingsCard(
@@ -187,7 +149,7 @@ fun BolusSettingsScreen(
                         onExpandedChange = { insulinTypeExpanded = it }
                     ) {
                         OutlinedTextField(
-                            value = settings.insulinType.displayName,
+                            value = draftSettings.insulinType.displayName,
                             onValueChange = {},
                             readOnly = true,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = insulinTypeExpanded) },
@@ -220,8 +182,8 @@ fun BolusSettingsScreen(
 
                 // Duration of Action - Wheel Picker (Bottom Sheet)
                 Column {
-                    val displayValue = if (durationText.isNotEmpty()) {
-                        FormatUtils.formatDurationDisplay(durationText)
+                    val displayValue = if (draftSettings.durationOfAction.isNotEmpty()) {
+                        FormatUtils.formatDurationDisplay(draftSettings.durationOfAction)
                     } else {
                         ""
                     }
@@ -284,13 +246,11 @@ fun BolusSettingsScreen(
                 // Duration Picker Bottom Sheet
                 if (showDurationPicker) {
                     DurationPickerSheet(
-                        initialValue = durationText.toDoubleOrNull() ?: 4.0,
+                        initialValue = draftSettings.durationOfAction.toDoubleOrNull() ?: 4.0,
                         onDismiss = { showDurationPicker = false },
                         onConfirm = { selectedDuration ->
                             val formattedValue = FormatUtils.formatDoubleForUi(selectedDuration)
-                            durationText = formattedValue
                             viewModel.updateDurationOfAction(formattedValue)
-                            viewModel.validateFieldLive(FieldType.DURATION, formattedValue)
                             showDurationPicker = false
                         }
                     )
@@ -298,9 +258,25 @@ fun BolusSettingsScreen(
             }
 
             // Card 2: Insulin-to-Carb Ratio (ICR) - Simple/Advanced Mode
+            val icrSummary = if (!uiState.icrTimeDependent) {
+                "1:${draftSettings.icrMorning}"
+            } else {
+                val values = listOf(
+                    draftSettings.icrMorning.toIntOrNull() ?: 0,
+                    draftSettings.icrNoon.toIntOrNull() ?: 0,
+                    draftSettings.icrEvening.toIntOrNull() ?: 0,
+                    draftSettings.icrNight.toIntOrNull() ?: 0
+                ).filter { it > 0 }
+                if (values.distinct().size == 1) {
+                    "1:${values.first()}"
+                } else {
+                    "1:${values.minOrNull()}-${values.maxOrNull()}"
+                }
+            }
+
             ExpandableSettingsCard(
                 title = "Insulin to Carb Ratio",
-                valueText = if (!viewModel.isCardExpanded(ExpandableCard.ICR)) settings.icrSummary else null,
+                valueText = if (!viewModel.isCardExpanded(ExpandableCard.ICR)) icrSummary else null,
                 isExpanded = viewModel.isCardExpanded(ExpandableCard.ICR),
                 onToggleExpand = { viewModel.toggleCardExpansion(ExpandableCard.ICR) }
             ) {
@@ -312,11 +288,9 @@ fun BolusSettingsScreen(
                 ) {
                     Column {
                         OutlinedTextField(
-                            value = globalIcrText,
+                            value = draftSettings.icrMorning,
                             onValueChange = {
-                                globalIcrText = it
                                 viewModel.updateGlobalIcr(it)
-                                viewModel.clearError("icrGlobal")
                             },
                             label = { Text("1 Unit covers __ g carbs") },
                             suffix = { Text("g/unit", fontSize = 12.sp, color = Color.Gray) },
@@ -366,7 +340,7 @@ fun BolusSettingsScreen(
                     Switch(
                         checked = uiState.icrTimeDependent,
                         onCheckedChange = { enabled ->
-                            viewModel.toggleIcrTimeDependent(enabled, globalIcrText)
+                            viewModel.toggleIcrTimeDependent(enabled, draftSettings.icrMorning)
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -408,11 +382,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = icrMorningText,
+                                    value = draftSettings.icrMorning,
                                     onValueChange = {
-                                        icrMorningText = it
                                         viewModel.updateIcrMorning(it)
-                                        viewModel.clearError("icrMorning")
                                     },
                                     suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -457,11 +429,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = icrNoonText,
+                                    value = draftSettings.icrNoon,
                                     onValueChange = {
-                                        icrNoonText = it
                                         viewModel.updateIcrNoon(it)
-                                        viewModel.clearError("icrNoon")
                                     },
                                     suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -506,11 +476,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = icrEveningText,
+                                    value = draftSettings.icrEvening,
                                     onValueChange = {
-                                        icrEveningText = it
                                         viewModel.updateIcrEvening(it)
-                                        viewModel.clearError("icrEvening")
                                     },
                                     suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -555,11 +523,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = icrNightText,
+                                    value = draftSettings.icrNight,
                                     onValueChange = {
-                                        icrNightText = it
                                         viewModel.updateIcrNight(it)
-                                        viewModel.clearError("icrNight")
                                     },
                                     suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -595,9 +561,25 @@ fun BolusSettingsScreen(
             }
 
             // Card 3: Sensitivity Factor (ISF) - Simple/Advanced Mode
+            val isfSummary = if (!uiState.isfTimeDependent) {
+                "1:${draftSettings.isfMorning}"
+            } else {
+                val values = listOf(
+                    draftSettings.isfMorning.toIntOrNull() ?: 0,
+                    draftSettings.isfNoon.toIntOrNull() ?: 0,
+                    draftSettings.isfEvening.toIntOrNull() ?: 0,
+                    draftSettings.isfNight.toIntOrNull() ?: 0
+                ).filter { it > 0 }
+                if (values.distinct().size == 1) {
+                    "1:${values.first()}"
+                } else {
+                    "1:${values.minOrNull()}-${values.maxOrNull()}"
+                }
+            }
+
             ExpandableSettingsCard(
                 title = "Correction Factor",
-                valueText = if (!viewModel.isCardExpanded(ExpandableCard.ISF)) settings.isfSummary else null,
+                valueText = if (!viewModel.isCardExpanded(ExpandableCard.ISF)) isfSummary else null,
                 isExpanded = viewModel.isCardExpanded(ExpandableCard.ISF),
                 onToggleExpand = { viewModel.toggleCardExpansion(ExpandableCard.ISF) }
             ) {
@@ -609,11 +591,9 @@ fun BolusSettingsScreen(
                 ) {
                     Column {
                         OutlinedTextField(
-                            value = globalIsfText,
+                            value = draftSettings.isfMorning,
                             onValueChange = {
-                                globalIsfText = it
                                 viewModel.updateGlobalIsf(it)
-                                viewModel.clearError("isfGlobal")
                             },
                             label = { Text("1 Unit lowers BG by __ mg/dL") },
                             suffix = { Text("mg/dL", fontSize = 12.sp, color = Color.Gray) },
@@ -663,7 +643,7 @@ fun BolusSettingsScreen(
                     Switch(
                         checked = uiState.isfTimeDependent,
                         onCheckedChange = { enabled ->
-                            viewModel.toggleIsfTimeDependent(enabled, globalIsfText)
+                            viewModel.toggleIsfTimeDependent(enabled, draftSettings.isfMorning)
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -705,11 +685,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = isfMorningText,
+                                    value = draftSettings.isfMorning,
                                     onValueChange = {
-                                        isfMorningText = it
                                         viewModel.updateIsfMorning(it)
-                                        viewModel.clearError("isfMorning")
                                     },
                                     suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -754,11 +732,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = isfNoonText,
+                                    value = draftSettings.isfNoon,
                                     onValueChange = {
-                                        isfNoonText = it
                                         viewModel.updateIsfNoon(it)
-                                        viewModel.clearError("isfNoon")
                                     },
                                     suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -803,11 +779,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = isfEveningText,
+                                    value = draftSettings.isfEvening,
                                     onValueChange = {
-                                        isfEveningText = it
                                         viewModel.updateIsfEvening(it)
-                                        viewModel.clearError("isfEvening")
                                     },
                                     suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -852,11 +826,9 @@ fun BolusSettingsScreen(
                             }
                             Column {
                                 OutlinedTextField(
-                                    value = isfNightText,
+                                    value = draftSettings.isfNight,
                                     onValueChange = {
-                                        isfNightText = it
                                         viewModel.updateIsfNight(it)
-                                        viewModel.clearError("isfNight")
                                     },
                                     suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -894,16 +866,14 @@ fun BolusSettingsScreen(
             // Card 4: Blood Glucose Target
             ExpandableSettingsCard(
                 title = "Target BG",
-                valueText = if (!viewModel.isCardExpanded(ExpandableCard.TARGET_BG)) settings.targetBGDisplay else null,
+                valueText = if (!viewModel.isCardExpanded(ExpandableCard.TARGET_BG)) "${draftSettings.targetBG} mg/dL" else null,
                 isExpanded = viewModel.isCardExpanded(ExpandableCard.TARGET_BG),
                 onToggleExpand = { viewModel.toggleCardExpansion(ExpandableCard.TARGET_BG) }
             ) {
                 OutlinedTextField(
-                    value = targetBGText,
+                    value = draftSettings.targetBG,
                     onValueChange = {
-                        targetBGText = it
                         viewModel.updateTargetBG(it)
-                        viewModel.clearError("targetBG")
                     },
                     label = { Text("Target Value (mg/dL)") },
                     placeholder = { Text("100") },
@@ -937,29 +907,15 @@ fun BolusSettingsScreen(
             // Bottom spacing
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Save Button
+            // Save Button - Only commits draft state to repository when clicked
             Button(
                 onClick = {
-                    val isValid = viewModel.validateAndSave(
-                        durationText = durationText,
-                        targetBGText = targetBGText,
-                        icrGlobalText = globalIcrText,
-                        icrMorningText = icrMorningText,
-                        icrNoonText = icrNoonText,
-                        icrEveningText = icrEveningText,
-                        icrNightText = icrNightText,
-                        isfGlobalText = globalIsfText,
-                        isfMorningText = isfMorningText,
-                        isfNoonText = isfNoonText,
-                        isfEveningText = isfEveningText,
-                        isfNightText = isfNightText
-                    )
+                    viewModel.saveSettings()
 
-                    // If validation passed, navigate back after a short delay
-                    if (isValid) {
-                        // Delay to show success message before navigating
+                    // Navigate back after a short delay if form is valid
+                    if (viewModel.areAllFieldsValid()) {
                         coroutineScope.launch {
-                            delay(1500) // 1.5 seconds
+                            delay(1500) // 1.5 seconds to show success message
                             onNavigateBack()
                         }
                     }

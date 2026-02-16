@@ -37,6 +37,177 @@ fun CalculateBolusScreen(
     onNavigateBack: () -> Unit = {},
     viewModel: CalculateBolusViewModel = viewModel()
 ) {
+    @Composable
+    fun CalculatorView(
+        inputState: com.example.diabetesapp.viewmodel.BolusInputState,
+        viewModel: CalculateBolusViewModel,
+        onNavigateBack: () -> Unit = {}
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Primary Inputs Card (Kept mostly the same)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Text(
+                        text = "Standard Inputs",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00897B)
+                    )
+
+                    LargeInputField(
+                        label = "Current Blood Glucose",
+                        value = inputState.bloodGlucose,
+                        onValueChange = { viewModel.updateBloodGlucose(it) },
+                        unit = "mg/dL",
+                        placeholder = "Enter BG",
+                        errorMessage = inputState.bloodGlucoseError
+                    )
+
+                    LargeInputField(
+                        label = "Carbohydrates",
+                        value = inputState.carbs,
+                        onValueChange = { viewModel.updateCarbs(it) },
+                        unit = "g",
+                        placeholder = "Enter carbs",
+                        errorMessage = inputState.carbsError
+                    )
+                }
+            }
+
+            // --- NEW THESIS FEATURE: SPORT SIMULATOR ---
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)), // Light teal background
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Thesis Sport Algorithm",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF00695C)
+                        )
+                        Switch(
+                            checked = inputState.isSportModeActive,
+                            onCheckedChange = { viewModel.toggleSportMode(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF00897B)
+                            )
+                        )
+                    }
+
+                    // Only show sliders if Sport Mode is ON
+                    AnimatedVisibility(visible = inputState.isSportModeActive) {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                            // 1. Sport Type (Aerobic vs Anaerobic)
+                            Text(
+                                text = "Activity Type (T1DEXIP Logic)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF00695C)
+                            )
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { viewModel.updateSportType("Aerobic") },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (inputState.sportType == "Aerobic") Color(0xFF00897B) else Color.Transparent,
+                                        contentColor = if (inputState.sportType == "Aerobic") Color.White else Color(0xFF00897B)
+                                    )
+                                ) { Text("Aerobic (Run)") }
+
+                                OutlinedButton(
+                                    onClick = { viewModel.updateSportType("Anaerobic") },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (inputState.sportType == "Anaerobic") Color(0xFF00897B) else Color.Transparent,
+                                        contentColor = if (inputState.sportType == "Anaerobic") Color.White else Color(0xFF00897B)
+                                    )
+                                ) { Text("Anaerobic (Weights)") }
+                            }
+
+                            // 2. Intensity Slider
+                            Text(
+                                text = "Intensity: ${inputState.sportIntensity}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF00695C)
+                            )
+                            Slider(
+                                value = inputState.sportIntensityValue,
+                                onValueChange = { viewModel.updateSportIntensity(it) },
+                                valueRange = 1f..3f,
+                                steps = 1, // Creates 3 snap points (Low, Med, High)
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color(0xFF00897B),
+                                    activeTrackColor = Color(0xFF00897B)
+                                )
+                            )
+
+                            // 3. Duration Slider
+                            Text(
+                                text = "Duration: ${inputState.sportDurationMinutes.toInt()} mins",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF00695C)
+                            )
+                            Slider(
+                                value = inputState.sportDurationMinutes,
+                                onValueChange = { viewModel.updateSportDuration(it) },
+                                valueRange = 0f..120f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color(0xFF00897B),
+                                    activeTrackColor = Color(0xFF00897B)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            // --- END THESIS FEATURE ---
+
+            // Calculate Button
+            Button(
+                onClick = { viewModel.calculateBolus() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF00897B)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+            ) {
+                Text(
+                    text = "Calculate Dose",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+
     val inputState by viewModel.inputState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
