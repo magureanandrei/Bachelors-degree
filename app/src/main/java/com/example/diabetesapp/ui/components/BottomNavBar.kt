@@ -6,6 +6,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 
 sealed class BottomNavItem(
     val route: String,
@@ -13,9 +14,9 @@ sealed class BottomNavItem(
     val label: String
 ) {
     object Home : BottomNavItem("home", Icons.Default.Home, "Home")
-    object Bolus : BottomNavItem("bolus", Icons.Default.MedicalServices, "Bolus")
-    object History : BottomNavItem("history", Icons.Default.DateRange, "History")
-    object Stats : BottomNavItem("stats", Icons.Default.ShowChart, "Stats")
+    object History : BottomNavItem("history", Icons.Default.FormatListBulleted, "History")
+    object Stats : BottomNavItem("stats", Icons.Default.Insights, "Insights")
+    object Education : BottomNavItem("education", Icons.Default.MenuBook, "Learn")
     object Menu : BottomNavItem("menu", Icons.Default.Menu, "Menu")
 }
 
@@ -26,15 +27,16 @@ fun BottomNavBar(
 ) {
     val items = listOf(
         BottomNavItem.Home,
-        BottomNavItem.Bolus,
         BottomNavItem.History,
         BottomNavItem.Stats,
+        BottomNavItem.Education,
         BottomNavItem.Menu
     )
 
     NavigationBar(
         containerColor = Color.White,
-        contentColor = Color(0xFF00897B)
+        contentColor = Color(0xFF00897B),
+        tonalElevation = 8.dp
     ) {
         items.forEach { item ->
             NavigationBarItem(
@@ -44,7 +46,12 @@ fun BottomNavBar(
                         contentDescription = item.label
                     )
                 },
-                label = { Text(item.label) },
+                label = {
+                    Text(
+                        text = item.label,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                },
                 selected = selectedRoute == item.route,
                 onClick = { onNavigate(item.route) },
                 colors = NavigationBarItemDefaults.colors(
@@ -58,4 +65,3 @@ fun BottomNavBar(
         }
     }
 }
-

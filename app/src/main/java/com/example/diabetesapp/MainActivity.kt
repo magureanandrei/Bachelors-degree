@@ -69,7 +69,7 @@ fun MainScreen() {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            if (currentScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+            if (currentScreen in listOf("home", "history", "stats", "education", "menu")) {
                 BottomNavBar(
                     selectedRoute = selectedRoute,
                     onNavigate = { route -> navigateTo(route) }
@@ -80,18 +80,17 @@ fun MainScreen() {
         when (currentScreen) {
             "home" -> HomeScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
                 onNavigateToLogReading = { navigateTo("log_reading") }
             )
-            "history" -> HistoryScreen(
-                modifier = Modifier.padding(innerPadding)
-            )
+            "history" -> HistoryScreen(modifier = Modifier.padding(innerPadding))
+            "stats" -> StatsScreen(modifier = Modifier.padding(innerPadding))
+            "education" -> EducationScreen(modifier = Modifier.padding(innerPadding)) // NEW
             "menu" -> MenuScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
-                onNavigateToBolusSettings = { navigateTo("bolus_settings") }
+                onNavigateToBolusSettings = { navigateTo("bolus_settings") } // Removed the old calculate/log params
             )
-            // Detail Screens
+
+            // Detail screens (no bottom bar)
             "bolus_settings" -> BolusSettingsScreen(
                 modifier = Modifier.padding(innerPadding),
                 onNavigateBack = navigateBack
