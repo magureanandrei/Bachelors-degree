@@ -9,8 +9,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 data class LogReadingState(
     val bloodGlucose: String = "",
@@ -30,6 +28,10 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
     fun updateManualInsulin(value: String) { _uiState.value = _uiState.value.copy(manualInsulin = value, errorMessage = null) }
     fun updateNotes(value: String) { _uiState.value = _uiState.value.copy(notes = value) }
 
+    fun resetState() {
+        _uiState.value = LogReadingState()
+    }
+
     fun saveEntry() {
         val state = _uiState.value
 
@@ -37,18 +39,27 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
         val carbs = state.carbs.toDoubleOrNull() ?: 0.0
         val insulin = state.manualInsulin.toDoubleOrNull() ?: 0.0
 
-        // Validation: At least one field must be filled
         if (bg == 0.0 && carbs == 0.0 && insulin == 0.0) {
             _uiState.value = _uiState.value.copy(errorMessage = "Please enter at least one value to log.")
             return
         }
 
+        // Smart categorization for the timeline
+        val eventType = when {
+            insulin > 0.0 && carbs == 0.0 -> "MANUAL_INSULIN"
+            carbs > 0.0 && insulin == 0.0 -> "MEAL"
+            bg > 0.0 && carbs == 0.0 && insulin == 0.0 -> "BG_CHECK"
+            else -> "MIXED_LOG"
+        }
+
         val log = BolusLog(
             timestamp = System.currentTimeMillis(),
+            eventType = eventType,
             bloodGlucose = bg,
             carbs = carbs,
-            standardDose = 0.0, // 0 because this wasn't calculated by the app
-            finalDose = insulin, // The manual dose they took
+            standardDose = 0.0,
+            suggestedDose = 0.0,
+            administeredDose = insulin,
             isSportModeActive = false,
             sportType = null,
             sportIntensity = null,
@@ -58,7 +69,7 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 
         viewModelScope.launch {
             repository.insert(log)
-            _uiState.value = LogReadingState(isSaved = true) // Reset and trigger navigation
+            _uiState.value = LogReadingState(isSaved = true)
         }
     }
 }
@@ -66,8 +77,7 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 class LogReadingViewModelFactory(private val repository: BolusLogRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LogReadingViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return LogReadingViewModel(repository) as T
+            @Suppress("UNCHECKED_CAST") return LogReadingViewModel(repository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

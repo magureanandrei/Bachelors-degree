@@ -80,6 +80,7 @@ fun MainScreen() {
         when (currentScreen) {
             "home" -> HomeScreen(
                 modifier = Modifier.padding(innerPadding),
+                onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
                 onNavigateToLogReading = { navigateTo("log_reading") }
             )
             "history" -> HistoryScreen(modifier = Modifier.padding(innerPadding))

@@ -6,7 +6,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bloodtype
 import androidx.compose.material.icons.filled.DirectionsRun
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,7 +46,7 @@ fun HistoryScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Log Ledger", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
+        Text("History Log", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
 
         if (logs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -75,34 +77,62 @@ fun LogEntryCard(log: BolusLog) {
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+
+            // Header: Date and Event Icon
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(dateString, fontSize = 12.sp, color = Color.Gray)
 
-                if (log.isSportModeActive) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.DirectionsRun, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFFF9800))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Sport Mode", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
+                // Dynamic Icon based on the new Event Type
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    when (log.eventType) {
+                        "SMART_BOLUS" -> {
+                            Icon(Icons.Default.DirectionsRun, null, modifier = Modifier.size(14.dp), tint = Color(0xFFFF9800))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Smart Calculation", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
+                        }
+                        "MEAL" -> {
+                            Icon(Icons.Default.Restaurant, null, modifier = Modifier.size(14.dp), tint = Color(0xFFE91E63))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Meal Log", fontSize = 12.sp, color = Color(0xFFE91E63), fontWeight = FontWeight.Bold)
+                        }
+                        "BG_CHECK" -> {
+                            Icon(Icons.Default.Bloodtype, null, modifier = Modifier.size(14.dp), tint = Color(0xFFD32F2F))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("BG Check", fontSize = 12.sp, color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold)
+                        }
+                        "MANUAL_INSULIN" -> {
+                            Icon(Icons.Default.Vaccines, null, modifier = Modifier.size(14.dp), tint = Color(0xFF1976D2))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Manual Injection", fontSize = 12.sp, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // Body: Values
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("BG: ${log.bloodGlucose} mg/dL", fontWeight = FontWeight.SemiBold)
-                    Text("Carbs: ${log.carbs}g", color = Color.Gray, fontSize = 14.sp)
+                    if (log.bloodGlucose > 0) Text("BG: ${log.bloodGlucose} mg/dL", fontWeight = FontWeight.SemiBold)
+                    if (log.carbs > 0) Text("Carbs: ${log.carbs}g", color = Color.Gray, fontSize = 14.sp)
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${String.format(Locale.US, "%.1f", log.finalDose)} U", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
-                        Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF00897B), modifier = Modifier.padding(start = 4.dp).size(20.dp))
-                    }
-                    if (log.isSportModeActive && log.standardDose > log.finalDose) {
-                        val saved = log.standardDose - log.finalDose
-                        Text("Saved ${String.format(Locale.US, "%.1f", saved)} U", color = Color(0xFF4CAF50), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    // Only show insulin if they actually took some
+                    if (log.administeredDose > 0) {
+                        // Dark Green: What they ACTUALLY took
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                            Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(20.dp))
+                        }
+
+                        // Light Green: What the app originally suggested (if they overrode it, or if it was different from standard)
+                        if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
+                            Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        } else if (log.isSportModeActive) {
+                            Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

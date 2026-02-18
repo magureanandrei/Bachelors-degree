@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsRun
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,7 +35,7 @@ fun StatsScreen(
 
     // Dynamically calculate thesis metrics from the local database
     val sportSessions = logs.filter { it.isSportModeActive }
-    val totalInsulinSaved = sportSessions.sumOf { it.standardDose - it.finalDose }.coerceAtLeast(0.0)
+    val totalInsulinSaved: Double = sportSessions.sumOf { it.standardDose - it.suggestedDose }.coerceAtLeast(0.0)
 
     Column(
         modifier = modifier
@@ -71,7 +71,7 @@ fun StatsScreen(
                 modifier = Modifier.weight(1f),
                 title = "Sport Sessions",
                 value = "${sportSessions.size}",
-                icon = Icons.Default.DirectionsRun,
+                icon = Icons.AutoMirrored.Filled.DirectionsRun,
                 iconTint = Color(0xFFFF9800) // Orange for activity
             )
         }
