@@ -202,6 +202,7 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
             suggestedDose = state.calculatedDose,
             administeredDose = state.userAdjustedDose ?: state.calculatedDose,
             isSportModeActive = state.isSportModeActive,
+            clinicalSuggestion = if (state.isSportModeActive) state.sportReductionLog else null,
             sportType = if (state.isSportModeActive) state.sportType else null,
             sportIntensity = if (state.isSportModeActive) state.sportIntensity else null,
             sportDuration = if (state.isSportModeActive) state.sportDurationMinutes else null,

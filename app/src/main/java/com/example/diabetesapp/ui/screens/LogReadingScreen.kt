@@ -44,29 +44,18 @@ fun LogReadingScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-
-    // State for the Sport info popup
     var showSportInfoDialog by remember { mutableStateOf(false) }
 
-    // Reset state when leaving
     DisposableEffect(Unit) {
-        onDispose {
-            viewModel.resetState()
-        }
+        onDispose { viewModel.resetState() }
     }
 
-    // Navigate back automatically when saved successfully
     LaunchedEffect(uiState.isSaved) {
-        if (uiState.isSaved) {
-            onNavigateBack()
-        }
+        if (uiState.isSaved) { onNavigateBack() }
     }
 
-    // Show error messages
     LaunchedEffect(uiState.errorMessage) {
-        uiState.errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-        }
+        uiState.errorMessage?.let { snackbarHostState.showSnackbar(it) }
     }
 
     Scaffold(
@@ -76,9 +65,7 @@ fun LogReadingScreen(
             TopAppBar(
                 title = { Text("Log Event", fontWeight = FontWeight.SemiBold, fontSize = 20.sp) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
+                    IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
@@ -93,6 +80,27 @@ fun LogReadingScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            // --- NEW: Time & Date Fields ---
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = uiState.eventTime,
+                    onValueChange = { viewModel.updateTime(it) },
+                    label = { Text("Time") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, focusedContainerColor = Color.White)
+                )
+                OutlinedTextField(
+                    value = uiState.eventDate,
+                    onValueChange = { viewModel.updateDate(it) },
+                    label = { Text("Date") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, focusedContainerColor = Color.White)
+                )
+            }
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -103,26 +111,21 @@ fun LogReadingScreen(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Text("Manual Entry", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
-
                     LargeInputField(
                         label = "Blood Glucose", value = uiState.bloodGlucose,
                         onValueChange = { viewModel.updateBloodGlucose(it) },
                         unit = "mg/dL", placeholder = "0"
                     )
-
                     LargeInputField(
                         label = "Carbohydrates", value = uiState.carbs,
                         onValueChange = { viewModel.updateCarbs(it) },
                         unit = "g", placeholder = "0"
                     )
-
                     LargeInputField(
                         label = "Insulin Dose", value = uiState.manualInsulin,
                         onValueChange = { viewModel.updateManualInsulin(it) },
                         unit = "U", placeholder = "0.0"
                     )
-
                     StandardInputField(
                         label = "Notes / Tags", value = uiState.notes,
                         onValueChange = { viewModel.updateNotes(it) },
@@ -131,7 +134,7 @@ fun LogReadingScreen(
                 }
             }
 
-            // --- THE NEW SPORT MODE SECTION ---
+            // --- SPORT MODE SECTION ---
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -202,10 +205,9 @@ fun LogReadingScreen(
                     }
                 }
             }
-            // --- END SPORT MODE SECTION ---
 
             Button(
-                onClick = { viewModel.attemptSave() }, // Triggers the algorithm warning check!
+                onClick = { viewModel.attemptSave() },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
                 shape = RoundedCornerShape(12.dp)
@@ -215,26 +217,16 @@ fun LogReadingScreen(
         }
     }
 
-    // --- DIALOGS ---
-
-    // The Pre-Sport Carb Suggestion Dialog
+    // --- DIALOGS (Kept exactly the same as the previous response) ---
+    // (Carb Suggestion Dialog)
     if (uiState.showCarbSuggestionDialog) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissCarbDialog() },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color(0xFFE91E63))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Carbs Recommended", fontWeight = FontWeight.Bold, color = Color(0xFFE91E63))
-                }
-            },
+            title = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63)); Spacer(modifier = Modifier.width(8.dp)); Text("Carbs Recommended", fontWeight = FontWeight.Bold, color = Color(0xFFE91E63)) } },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(uiState.carbSuggestionMessage, fontSize = 14.sp)
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFCE4EC)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFCE4EC)), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Suggested Intake:", color = Color.Gray, fontSize = 12.sp)
                             Text("${uiState.suggestedCarbs}g Carbs", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, color = Color(0xFFE91E63))
@@ -242,138 +234,57 @@ fun LogReadingScreen(
                     }
                 }
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        // User agrees, inject the suggested carbs into the state and save
-                        viewModel.updateCarbs(uiState.suggestedCarbs.toString())
-                        viewModel.dismissCarbDialog()
-                        viewModel.executeSave()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63))
-                ) {
-                    Text("Add Carbs & Log")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    // User ignores the warning, saves as is
-                    viewModel.dismissCarbDialog()
-                    viewModel.executeSave()
-                }) {
-                    Text("Ignore & Log Anyway", color = Color.Gray)
-                }
-            },
+            confirmButton = { Button(onClick = { viewModel.updateCarbs(uiState.suggestedCarbs.toString()); viewModel.dismissCarbDialog(); viewModel.executeSave() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63))) { Text("Add Carbs & Log") } },
+            dismissButton = { TextButton(onClick = { viewModel.dismissCarbDialog(); viewModel.executeSave() }) { Text("Ignore & Log Anyway", color = Color.Gray) } },
             containerColor = Color.White
         )
     }
 
-    // The Educational Sport Info Dialog
+    // (Post Sport Alert Dialog)
+    if (uiState.showPostSportAlert) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissPostSportAlert() },
+            title = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Info, null, tint = Color(0xFF00695C)); Spacer(modifier = Modifier.width(8.dp)); Text("Clinical Insight", fontWeight = FontWeight.Bold, color = Color(0xFF00695C)) } },
+            text = { Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)), shape = RoundedCornerShape(12.dp)) { Text(text = uiState.postSportAlertMessage, fontSize = 14.sp, color = Color(0xFF004D40), modifier = Modifier.padding(16.dp), lineHeight = 20.sp) } },
+            confirmButton = { Button(onClick = { viewModel.dismissPostSportAlert(); viewModel.executeSave() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))) { Text("Understood, Log Event") } },
+            containerColor = Color.White
+        )
+    }
+
+    // (Info Dialog)
     if (showSportInfoDialog) {
         AlertDialog(
             onDismissRequest = { showSportInfoDialog = false },
-            title = {
-                Text("Sport Types Explained", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            },
+            title = { Text("Sport Types Explained", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(
-                        text = "Different exercises affect blood glucose (BG) in completely different ways based on the T1DEXIP study guidelines:",
-                        fontSize = 14.sp
-                    )
-
-                    Column {
-                        Text("🏃‍♂️ Aerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
-                        Text("Continuous cardio (running, cycling, swimming). Rapidly burns glucose. Requires the largest reduction in insulin to prevent severe lows.", fontSize = 13.sp, color = Color.DarkGray)
-                    }
-
-                    Column {
-                        Text("⚽ Mixed", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
-                        Text("Stop-and-go sports (soccer, basketball, tennis). A mix of cardio and adrenaline. Requires a moderate, balanced insulin approach.", fontSize = 13.sp, color = Color.DarkGray)
-                    }
-
-                    Column {
-                        Text("🏋️‍♂️ Anaerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
-                        Text("Short, intense bursts (weightlifting, sprinting). Adrenaline spikes can actually RAISE your BG temporarily. Requires minimal insulin reduction.", fontSize = 13.sp, color = Color.DarkGray)
-                    }
+                    Text("Different exercises affect blood glucose (BG) in completely different ways based on the T1DEXIP study guidelines:", fontSize = 14.sp)
+                    Column { Text("🏃‍♂️ Aerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B)); Text("Continuous cardio (running, cycling, swimming). Rapidly burns glucose. Requires the largest reduction in insulin to prevent severe lows.", fontSize = 13.sp, color = Color.DarkGray) }
+                    Column { Text("⚽ Mixed", fontWeight = FontWeight.Bold, color = Color(0xFF00897B)); Text("Stop-and-go sports (soccer, basketball, tennis). A mix of cardio and adrenaline. Requires a moderate, balanced insulin approach.", fontSize = 13.sp, color = Color.DarkGray) }
+                    Column { Text("🏋️‍♂️ Anaerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B)); Text("Short, intense bursts (weightlifting, sprinting). Adrenaline spikes can actually RAISE your BG temporarily. Requires minimal insulin reduction.", fontSize = 13.sp, color = Color.DarkGray) }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showSportInfoDialog = false }) {
-                    Text("Got it", color = Color(0xFF00897B), fontWeight = FontWeight.Bold)
-                }
-            },
-            containerColor = Color.White,
-            shape = RoundedCornerShape(16.dp)
+            confirmButton = { TextButton(onClick = { showSportInfoDialog = false }) { Text("Got it", color = Color(0xFF00897B), fontWeight = FontWeight.Bold) } },
+            containerColor = Color.White, shape = RoundedCornerShape(16.dp)
         )
     }
 }
 
-// --- YOUR EXISTING COMPONENTS ---
-
+// ... KEEP LARGEINPUTFIELD AND STANDARDINPUTFIELD EXACTLY THE SAME ...
 @Composable
-fun LargeInputField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    unit: String,
-    placeholder: String = ""
-) {
+fun LargeInputField(label: String, value: String, onValueChange: (String) -> Unit, unit: String, placeholder: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color.Gray
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text(placeholder) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true
-            )
-            if (unit.isNotEmpty()) {
-                Text(
-                    text = unit,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.Gray
-                )
-            }
+        Text(text = label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.Gray)
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), placeholder = { Text(placeholder) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), shape = RoundedCornerShape(12.dp), singleLine = true)
+            if (unit.isNotEmpty()) { Text(text = unit, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Color.Gray) }
         }
     }
 }
-
 @Composable
-fun StandardInputField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    unit: String,
-    helperText: String = ""
-) {
+fun StandardInputField(label: String, value: String, onValueChange: (String) -> Unit, unit: String, helperText: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color.Gray
-        )
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(helperText) },
-            shape = RoundedCornerShape(12.dp),
-            singleLine = true
-        )
+        Text(text = label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.Gray)
+        OutlinedTextField(value = value, onValueChange = onValueChange, modifier = Modifier.fillMaxWidth(), placeholder = { Text(helperText) }, shape = RoundedCornerShape(12.dp), singleLine = true)
     }
 }

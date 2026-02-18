@@ -1,5 +1,6 @@
 package com.example.diabetesapp.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,7 +71,11 @@ fun LogEntryCard(log: BolusLog) {
     val formatter = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
     val dateString = formatter.format(Date(log.timestamp))
 
+    // State to track if the card is expanded
+    var isExpanded by remember { mutableStateOf(false) }
+
     Card(
+        onClick = { isExpanded = !isExpanded }, // Make the whole card clickable!
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -82,7 +87,7 @@ fun LogEntryCard(log: BolusLog) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(dateString, fontSize = 12.sp, color = Color.Gray)
 
-                // Dynamic Icon based on the new Event Type
+                // Dynamic Icon based on Event Type
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     when (log.eventType) {
                         "SMART_BOLUS" -> {
@@ -100,10 +105,15 @@ fun LogEntryCard(log: BolusLog) {
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("BG Check", fontSize = 12.sp, color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold)
                         }
-                        "MANUAL_INSULIN" -> {
+                        "MANUAL_INSULIN", "MIXED_LOG" -> {
                             Icon(Icons.Default.Vaccines, null, modifier = Modifier.size(14.dp), tint = Color(0xFF1976D2))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Manual Injection", fontSize = 12.sp, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold)
+                            Text("Manual Entry", fontSize = 12.sp, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold)
+                        }
+                        "SPORT" -> {
+                            Icon(Icons.Default.DirectionsRun, null, modifier = Modifier.size(14.dp), tint = Color(0xFF00695C))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Sport Event", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -119,19 +129,42 @@ fun LogEntryCard(log: BolusLog) {
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
-                    // Only show insulin if they actually took some
                     if (log.administeredDose > 0) {
-                        // Dark Green: What they ACTUALLY took
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
                             Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(20.dp))
                         }
 
-                        // Light Green: What the app originally suggested (if they overrode it, or if it was different from standard)
                         if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
                             Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        } else if (log.isSportModeActive) {
-                            Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // --- THE EXPANDABLE SECTION ---
+            AnimatedVisibility(visible = isExpanded) {
+                Column(modifier = Modifier.padding(top = 16.dp).fillMaxWidth()) {
+                    HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (log.notes.isNotBlank()) {
+                        Text("Notes:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text(log.notes, fontSize = 14.sp, color = Color.DarkGray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    if (!log.clinicalSuggestion.isNullOrBlank()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("CDSS Insight Provided:", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(log.clinicalSuggestion, fontSize = 13.sp, color = Color(0xFF004D40), lineHeight = 18.sp)
+                            }
                         }
                     }
                 }

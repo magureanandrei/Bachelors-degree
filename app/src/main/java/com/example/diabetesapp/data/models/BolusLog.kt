@@ -7,20 +7,21 @@ import androidx.room.PrimaryKey
 data class BolusLog(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-    val timestamp: Long,
-
-    // Types: "SMART_BOLUS", "MANUAL_INSULIN", "MEAL", "BG_CHECK", "MIXED_LOG"
+    val timestamp: Long, // This will now represent the actual event time
     val eventType: String,
 
     val bloodGlucose: Double,
     val carbs: Double,
-    val standardDose: Double,      // Normal math
-    val suggestedDose: Double,     // Sport Algo math
-    val administeredDose: Double,  // What the user ACTUALLY took
+    val standardDose: Double,
+    val suggestedDose: Double,
+    val administeredDose: Double,
 
     val isSportModeActive: Boolean,
     val sportType: String?,
     val sportIntensity: String?,
     val sportDuration: Float?,
-    val notes: String
+    val notes: String,
+
+    // NEW: Save the exact suggestion the app gave the user!
+    val clinicalSuggestion: String?
 )
