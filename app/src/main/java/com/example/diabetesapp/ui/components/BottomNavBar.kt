@@ -16,7 +16,7 @@ sealed class BottomNavItem(
     object Bolus : BottomNavItem("bolus", Icons.Default.MedicalServices, "Bolus")
     object History : BottomNavItem("history", Icons.Default.DateRange, "History")
     object Stats : BottomNavItem("stats", Icons.Default.ShowChart, "Stats")
-    object Settings : BottomNavItem("settings", Icons.Default.Settings, "Settings")
+    object Menu : BottomNavItem("menu", Icons.Default.Menu, "Menu")
 }
 
 @Composable
@@ -29,7 +29,7 @@ fun BottomNavBar(
         BottomNavItem.Bolus,
         BottomNavItem.History,
         BottomNavItem.Stats,
-        BottomNavItem.Settings
+        BottomNavItem.Menu
     )
 
     NavigationBar(

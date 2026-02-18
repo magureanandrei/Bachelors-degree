@@ -2,4 +2,10 @@
 <resources>
 
     <style name="Theme.DiabetesApp" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- High-contrast theme for NumberPicker wheels -->
+    <style name="WheelPickerTheme" parent="android:Theme.Material.Light.Dialog">
+        <item name="android:textColorPrimary">#000000</item>
+        <item name="android:textSize">24sp</item>
+    </style>
 </resources>
