@@ -5,19 +5,20 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
+import com.example.diabetesapp.data.models.CgmTrend
+import com.example.diabetesapp.data.models.PatientContext
+import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
-import com.example.diabetesapp.utils.BolusCalculatorHelper
+import com.example.diabetesapp.utils.AlgorithmEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
-enum class InputMode {
-    MANUAL,
-    CALCULATE
-}
+enum class InputMode { MANUAL, CALCULATE }
 
 data class BolusInputState(
     val inputMode: InputMode = InputMode.CALCULATE,
@@ -34,18 +35,17 @@ data class BolusInputState(
 
     // Dose Tracking
     val standardDose: Double? = null,
-    val calculatedDose: Double? = null,    // The Suggested Dose
-    val userAdjustedDose: Double? = null,  // The Administered Dose
+    val calculatedDose: Double? = null,
+    val userAdjustedDose: Double? = null,
     val showResult: Boolean = false,
 
-    // --- THESIS: SPORT SIMULATOR VARIABLES ---
+    // Sport Variables
     val isSportModeActive: Boolean = false,
     val sportType: String = "Aerobic",
     val sportIntensityValue: Float = 2f,
     val sportIntensity: String = "Medium",
     val sportDurationMinutes: Float = 45f,
     val sportReductionLog: String = "",
-    // -----------------------------------------
 
     val bloodGlucoseError: String? = null,
     val carbsError: String? = null,
@@ -59,6 +59,7 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
     private val _inputState = MutableStateFlow(BolusInputState())
     val inputState: StateFlow<BolusInputState> = _inputState.asStateFlow()
 
+    // Temporary dummy settings until we build the Profile Tab
     private val dummySettings = BolusSettings(
         icrMorning = 10f, icrNoon = 10f, icrEvening = 10f, icrNight = 10f,
         isfMorning = 50f, isfNoon = 50f, isfEvening = 50f, isfNight = 50f,
@@ -75,6 +76,7 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         )
     }
 
+    // Standard UI Updaters
     fun setInputMode(mode: InputMode) { _inputState.value = _inputState.value.copy(inputMode = mode) }
     fun updateDate(value: String) { _inputState.value = _inputState.value.copy(currentDate = value) }
     fun updateTime(value: String) { _inputState.value = _inputState.value.copy(currentTime = value) }
@@ -82,12 +84,7 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
     fun updateBasalRateExcess(value: String) { _inputState.value = _inputState.value.copy(basalRateExcess = value) }
     fun updateActiveInsulin(value: String) { _inputState.value = _inputState.value.copy(activeInsulin = value) }
     fun updateNotes(value: String) { _inputState.value = _inputState.value.copy(notes = value) }
-
-    fun resetState() {
-        _inputState.value = BolusInputState()
-        updateCurrentDateTime()
-    }
-
+    fun resetState() { _inputState.value = BolusInputState(); updateCurrentDateTime() }
     fun toggleAdvancedSection() { _inputState.value = _inputState.value.copy(isAdvancedExpanded = !_inputState.value.isAdvancedExpanded) }
     fun dismissAdvancedConfirmationDialog() { _inputState.value = _inputState.value.copy(showAdvancedConfirmationDialog = false) }
     fun dismissResultDialog() { _inputState.value = _inputState.value.copy(showResultDialog = false) }
@@ -99,23 +96,14 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
     fun updateSportDuration(value: Float) { _inputState.value = _inputState.value.copy(sportDurationMinutes = value) }
 
     fun updateSportIntensity(value: Float) {
-        val intensityString = when (value.toInt()) {
-            1 -> "Low"
-            2 -> "Medium"
-            3 -> "High"
-            else -> "Medium"
-        }
+        val intensityString = when (value.toInt()) { 1 -> "Low"; 2 -> "Medium"; 3 -> "High"; else -> "Medium" }
         _inputState.value = _inputState.value.copy(sportIntensityValue = value, sportIntensity = intensityString)
     }
 
-    // User Override Stepper
     fun adjustSuggestedDose(delta: Double) {
         val current = _inputState.value.userAdjustedDose ?: 0.0
         var newDose = maxOf(0.0, current + delta)
-
-        // Fix floating point precision (so 2.0 - 0.1 doesn't become 1.9000000001)
         newDose = Math.round(newDose * 10.0) / 10.0
-
         _inputState.value = _inputState.value.copy(userAdjustedDose = newDose)
     }
 
@@ -131,62 +119,43 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
             _inputState.value = _inputState.value.copy(bloodGlucoseError = "BG required")
             return
         }
-        if (bg < 70 && state.isSportModeActive) {
-            _inputState.value = _inputState.value.copy(warningMessage = "⚠️ Danger: BG too low for sports. Eat carbs and do not bolus.")
-            return
-        }
         performCalculation()
     }
 
+    // --- THE NEW CENTRALIZED ENGINE CALL ---
     private fun performCalculation() {
         val state = _inputState.value
-        val bg = state.bloodGlucose.toFloatOrNull() ?: return
-        val carbs = state.carbs.toFloatOrNull() ?: 0f
-        val activeInsulin = state.activeInsulin.toFloatOrNull() ?: 0f
 
-        val standardBolus = BolusCalculatorHelper.calculateBolus(
-            carbs = carbs, currentBG = bg, settings = dummySettings, activeInsulin = activeInsulin
-        ).toDouble()
+        // 1. Build the Patient Context
+        val context = PatientContext(
+            therapyType = TherapyType.MDI_PENS, // Hardcoded until we build Settings
+            bolusSettings = dummySettings,
+            currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
+            hasCGM = false, // Hardcoded for MVP until we add UI toggle
+            cgmTrend = CgmTrend.NONE,
+            activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
+            plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
+            isDoingSport = state.isSportModeActive,
+            sportType = state.sportType,
+            sportIntensity = state.sportIntensityValue.toInt(),
+            sportDurationMins = state.sportDurationMinutes.toInt(),
+            minutesUntilSport = 0, // "Right Now"
+            timeOfDay = LocalTime.now()
+        )
 
-        val finalDose = if (state.isSportModeActive) applySportReduction(standardBolus, state) else standardBolus
-        val safeDose = maxOf(0.0, finalDose)
+        // 2. Feed it to the Engine
+        val decision = AlgorithmEngine.calculateClinicalAdvice(context)
 
+        // 3. Update the UI
         _inputState.value = _inputState.value.copy(
-            standardDose = standardBolus,
-            calculatedDose = safeDose,
-            userAdjustedDose = safeDose, // Initialize manual adjustment to the suggestion
+            standardDose = (context.plannedCarbs / dummySettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - dummySettings.targetBG) / dummySettings.getCurrentIsf()), // Just for visual comparison
+            calculatedDose = decision.suggestedInsulinDose,
+            userAdjustedDose = decision.suggestedInsulinDose,
+            sportReductionLog = decision.clinicalRationale,
+            warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Low BG Warning: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
             showResult = true,
             showResultDialog = true
         )
-    }
-
-    private fun applySportReduction(standardDose: Double, state: BolusInputState): Double {
-        var reductionPercentage = 0.0
-        var logMessage = "Standard Dose: ${String.format("%.1f", standardDose)}U\n"
-
-        if (state.sportType == "Anaerobic") {
-            logMessage += "Anaerobic activity detected. Minimizing insulin reduction to prevent hyperglycemia.\n"
-            reductionPercentage = 0.10
-        } else {
-            logMessage += "Aerobic activity detected. Applying ISPAD reduction matrix.\n"
-            when (state.sportIntensityValue.toInt()) {
-                1 -> { reductionPercentage = 0.25; logMessage += "- Low Intensity: 25% base reduction.\n" }
-                2 -> { reductionPercentage = 0.50; logMessage += "- Medium Intensity: 50% base reduction.\n" }
-                3 -> { reductionPercentage = 0.75; logMessage += "- High Intensity: 75% base reduction.\n" }
-            }
-            if (state.sportDurationMinutes > 45f) {
-                val extraTime = state.sportDurationMinutes - 45f
-                val extraReduction = minOf(0.20, (extraTime / 15f) * 0.10)
-                reductionPercentage += extraReduction
-                logMessage += "- Duration > 45m: Added ${String.format("%.0f", extraReduction * 100)}% extra safety reduction.\n"
-            }
-        }
-        val finalReduction = minOf(0.90, reductionPercentage)
-        val newDose = standardDose * (1.0 - finalReduction)
-        logMessage += "\nFinal Sport Dose: ${String.format("%.1f", newDose)}U (Reduced by ${String.format("%.0f", finalReduction * 100)}%)"
-
-        _inputState.value = _inputState.value.copy(sportReductionLog = logMessage)
-        return newDose
     }
 
     fun logEntry() {
