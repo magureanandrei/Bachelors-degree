@@ -40,14 +40,27 @@ fun HistoryScreen(
 
     val logs by viewModel.allLogs.collectAsState()
 
+    // Group logs by Date (e.g., "Feb 24, 2026")
+    val groupedLogs = remember(logs) {
+        logs.groupBy { log ->
+            val formatter = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+            formatter.format(Date(log.timestamp))
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xFFF5F5F5))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 16.dp), // Removed vertical padding to let list scroll under title
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("History Log", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
+        Text(
+            text = "History Log",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+        )
 
         if (logs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -56,10 +69,26 @@ fun HistoryScreen(
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 24.dp), // Extra padding at bottom
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(logs) { log ->
-                    LogEntryCard(log)
+                groupedLogs.forEach { (dateString, dailyLogs) ->
+
+                    // 1. The Date Header
+                    item {
+                        Text(
+                            text = dateString,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                        )
+                    }
+
+                    // 2. The Log Cards for that specific day
+                    items(dailyLogs) { log ->
+                        LogEntryCard(log)
+                    }
                 }
             }
         }
@@ -68,24 +97,25 @@ fun HistoryScreen(
 
 @Composable
 fun LogEntryCard(log: BolusLog) {
-    val formatter = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
-    val dateString = formatter.format(Date(log.timestamp))
+    // ONLY show the time now, since the date is in the header
+    val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val timeString = timeFormatter.format(Date(log.timestamp))
 
-    // State to track if the card is expanded
     var isExpanded by remember { mutableStateOf(false) }
 
     Card(
-        onClick = { isExpanded = !isExpanded }, // Make the whole card clickable!
+        onClick = { isExpanded = !isExpanded },
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(10.dp) // Slightly smaller rounding
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        // Reduced padding from 16.dp to 12.dp to make it more compact
+        Column(modifier = Modifier.padding(12.dp)) {
 
-            // Header: Date and Event Icon
+            // Header: Time and Event Icon
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(dateString, fontSize = 12.sp, color = Color.Gray)
+                Text(timeString, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
 
                 // Dynamic Icon based on Event Type
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -119,24 +149,27 @@ fun LogEntryCard(log: BolusLog) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp)) // Slightly tighter spacing
 
             // Body: Values
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    if (log.bloodGlucose > 0) Text("BG: ${log.bloodGlucose} mg/dL", fontWeight = FontWeight.SemiBold)
-                    if (log.carbs > 0) Text("Carbs: ${log.carbs}g", color = Color.Gray, fontSize = 14.sp)
+                    if (log.bloodGlucose > 0) {
+                        val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
+                        Text("BG: ${log.bloodGlucose} mg/dL", fontWeight = FontWeight.Bold, color = color)
+                    }
+                    if (log.carbs > 0) Text("Carbs: ${log.carbs}g", color = Color.Gray, fontSize = 13.sp)
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
                     if (log.administeredDose > 0) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                            Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(20.dp))
+                            Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                            Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(16.dp))
                         }
 
                         if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
-                            Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -144,13 +177,13 @@ fun LogEntryCard(log: BolusLog) {
 
             // --- THE EXPANDABLE SECTION ---
             AnimatedVisibility(visible = isExpanded) {
-                Column(modifier = Modifier.padding(top = 16.dp).fillMaxWidth()) {
+                Column(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                     HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
                     Spacer(modifier = Modifier.height(12.dp))
 
                     if (log.notes.isNotBlank()) {
                         Text("Notes:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        Text(log.notes, fontSize = 14.sp, color = Color.DarkGray)
+                        Text(log.notes, fontSize = 13.sp, color = Color.DarkGray)
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
@@ -160,8 +193,8 @@ fun LogEntryCard(log: BolusLog) {
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text("CDSS Insight Provided:", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold)
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("CDSS Insight:", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(log.clinicalSuggestion, fontSize = 13.sp, color = Color(0xFF004D40), lineHeight = 18.sp)
                             }

@@ -19,6 +19,14 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.Duration
 
+enum class InsightType { ON_TRACK, SUGGESTION, WARNING }
+
+data class LogInsight(
+    val type: InsightType,
+    val title: String,
+    val message: String
+)
+
 data class LogReadingState(
     val eventDate: String = "",
     val eventTime: String = "",
@@ -33,12 +41,8 @@ data class LogReadingState(
     val sportIntensity: String = "Medium",
     val sportDurationMinutes: Float = 45f,
 
-    val showCarbSuggestionDialog: Boolean = false,
-    val suggestedCarbs: Int = 0,
-    val carbSuggestionMessage: String = "",
-
-    val showPostSportAlert: Boolean = false,
-    val postSportAlertMessage: String = "",
+    // The Unified Insight State
+    val currentInsight: LogInsight? = null,
 
     val isSaved: Boolean = false,
     val errorMessage: String? = null,
@@ -72,8 +76,7 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
         _uiState.value = _uiState.value.copy(sportIntensityValue = value, sportIntensity = intensityString)
     }
 
-    fun dismissCarbDialog() { _uiState.value = _uiState.value.copy(showCarbSuggestionDialog = false) }
-    fun dismissPostSportAlert() { _uiState.value = _uiState.value.copy(showPostSportAlert = false) }
+    fun dismissInsightDialog() { _uiState.value = _uiState.value.copy(currentInsight = null) }
 
     fun resetState() {
         val now = LocalDateTime.now()
@@ -83,8 +86,8 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
         )
     }
 
-    // --- THE NEW CENTRALIZED ENGINE CALL ---
-    fun attemptSave() {
+    // --- THE NEW UNIFIED ANALYZE FLOW ---
+    fun analyzeLog() {
         val state = _uiState.value
         val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
         val carbs = state.carbs.toDoubleOrNull() ?: 0.0
@@ -95,18 +98,14 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
             return
         }
 
-        if (state.isSportModeActive && bg == 0.0) {
-            _uiState.value = _uiState.value.copy(errorMessage = "Blood Glucose is required to assess sport safety.")
-            return
-        }
-
         // Calculate time offset based on the user's selected Time/Date
         val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
         val eventDateTimeString = "${state.eventDate} ${state.eventTime}"
         val eventDateTime = try { LocalDateTime.parse(eventDateTimeString, formatter) } catch (e: Exception) { LocalDateTime.now() }
+
+        // Positive = Future, Negative = Past
         val minutesDiff = Duration.between(LocalDateTime.now(), eventDateTime).toMinutes().toInt()
 
-        // 1. Build the Patient Context
         val context = PatientContext(
             therapyType = TherapyType.MDI_PENS,
             bolusSettings = dummySettings,
@@ -123,36 +122,72 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
             timeOfDay = LocalTime.now()
         )
 
-        // 2. Feed it to the Engine
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
 
-        // 3. Let the Engine dictate the Dialogs!
-        if (state.isSportModeActive && insulin == 0.0) {
-
-            // If the engine suggests carbs, and we haven't logged enough yet...
-            if (decision.suggestedRescueCarbs > 0 && carbs < decision.suggestedRescueCarbs) {
-                _uiState.value = _uiState.value.copy(
-                    showCarbSuggestionDialog = true,
-                    suggestedCarbs = decision.suggestedRescueCarbs,
-                    carbSuggestionMessage = decision.clinicalRationale,
-                    pendingClinicalSuggestion = "Pre-Sport Rescue: ${decision.clinicalRationale}"
+        // Generate the appropriate Insight based on the Algorithm's output
+        val insight = when {
+            // 1. Critical Carb Warning
+            decision.suggestedRescueCarbs > 0 && carbs < decision.suggestedRescueCarbs -> {
+                LogInsight(
+                    type = InsightType.WARNING,
+                    title = "Action Required",
+                    message = decision.clinicalRationale.ifBlank { "You need ${decision.suggestedRescueCarbs}g of fast-acting carbs to prevent a low." }
                 )
-                return
             }
-
-            // If the engine gave a late-onset warning (it does this for PAST events)
-            if (minutesDiff < 0 && decision.clinicalRationale.contains("Late-Onset")) {
-                _uiState.value = _uiState.value.copy(
-                    showPostSportAlert = true,
-                    postSportAlertMessage = decision.clinicalRationale,
-                    pendingClinicalSuggestion = "Post-Sport Alert: Late-Onset Hypoglycemia risk flagged."
+            // 2. Late-Onset Warning for past sports
+            state.isSportModeActive && minutesDiff <= 0 && decision.clinicalRationale.contains("Late-Onset") -> {
+                LogInsight(
+                    type = InsightType.WARNING,
+                    title = "Post-Sport Alert",
+                    message = decision.clinicalRationale
                 )
-                return
+            }
+            // 3. Pre-Sport Strategy (Future event)
+            state.isSportModeActive && minutesDiff > 0 -> {
+                LogInsight(
+                    type = InsightType.SUGGESTION,
+                    title = "Pre-Sport Strategy",
+                    message = decision.clinicalRationale.ifBlank { "You are clear to start your ${state.sportType} workout in $minutesDiff minutes. Monitor BG closely." }
+                )
+            }
+            // 4. Missed Insulin Suggestion
+            decision.suggestedInsulinDose > 0.5 && insulin == 0.0 -> {
+                LogInsight(
+                    type = InsightType.SUGGESTION,
+                    title = "Insulin Recommended",
+                    message = "The algorithm suggests ${decision.suggestedInsulinDose}U to cover this entry. Consider adjusting your log if you haven't taken insulin."
+                )
+            }
+            // 5. General Rationale present
+            decision.clinicalRationale.isNotBlank() && state.isSportModeActive -> {
+                LogInsight(
+                    type = InsightType.SUGGESTION,
+                    title = "Sport Insight",
+                    message = decision.clinicalRationale
+                )
+            }
+            // 6. ALL CLEAR / ON TRACK
+            else -> {
+                val statusMessage = if (bg in 70.0..180.0) {
+                    "Your blood glucose is in range. Great job keeping it steady!"
+                } else if (bg > 180.0 && insulin > 0.0) {
+                    "Correction dose noted. Drink water and monitor for the next 2 hours."
+                } else {
+                    "Log looks good. Everything is on track."
+                }
+
+                LogInsight(
+                    type = InsightType.ON_TRACK,
+                    title = "Looking Good!",
+                    message = statusMessage
+                )
             }
         }
 
-        // If no warnings were triggered, proceed to save
-        executeSave()
+        _uiState.value = _uiState.value.copy(
+            currentInsight = insight,
+            pendingClinicalSuggestion = decision.clinicalRationale.takeIf { it.isNotBlank() }
+        )
     }
 
     fun executeSave() {
@@ -194,11 +229,11 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
         viewModelScope.launch {
             repository.insert(log)
             resetState()
-            _uiState.value = _uiState.value.copy(isSaved = true)
+            _uiState.value = _uiState.value.copy(isSaved = true, currentInsight = null)
         }
     }
 }
-
+// Keep Factory class as is...
 class LogReadingViewModelFactory(private val repository: BolusLogRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LogReadingViewModel::class.java)) {

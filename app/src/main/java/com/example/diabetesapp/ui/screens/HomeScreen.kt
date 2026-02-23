@@ -65,9 +65,12 @@ fun HomeScreen(
             .background(Color(0xFFF5F5F5))
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp) // Slightly tightened spacing
     ) {
         HeaderSection()
+
+        // --- NEW PLACEMENT: Disclaimer always visible at the top ---
+        DisclaimerBanner()
 
         DashboardActionButtons(
             onSmartBolusClick = onNavigateToCalculateBolus,
@@ -115,7 +118,6 @@ fun HomeScreen(
             }
         }
 
-        DisclaimerBanner()
         Spacer(modifier = Modifier.height(24.dp))
     }
 
@@ -124,7 +126,6 @@ fun HomeScreen(
         LogDetailsDialog(log = log, onDismiss = { selectedLogForModal = null })
     }
 }
-
 // Logical Day Start (3 AM Cutoff)
 fun getLogicalDayStartTimestamp(): Long {
     val calendar = Calendar.getInstance()
@@ -144,6 +145,7 @@ fun TimeScaledBgGraph(
 ) {
     val textMeasurer = rememberTextMeasurer()
     val scrollState = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
     // Icon Painters for Canvas
     val sportPainter = rememberVectorPainter(Icons.Default.DirectionsRun)
@@ -152,15 +154,32 @@ fun TimeScaledBgGraph(
     val manualInsulinPainter = rememberVectorPainter(Icons.Default.Vaccines)
     val checkPainter = rememberVectorPainter(Icons.Default.Bloodtype)
 
-    // Auto-scroll to the far right (most recent time) when data loads
-    LaunchedEffect(logs.size) {
-        scrollState.scrollTo(scrollState.maxValue)
+    // Auto-scroll so the "Current Time" is centered on the screen when the graph loads
+    LaunchedEffect(scrollState.maxValue) {
+        if (scrollState.maxValue > 0) {
+            val twentyFourHoursMs = 24 * 60 * 60 * 1000f
+            val currentTime = System.currentTimeMillis()
+            val elapsedMs = (currentTime - dayStartTimestamp).coerceIn(0L, twentyFourHoursMs.toLong())
+
+            // What percentage of the day has passed?
+            val fraction = elapsedMs / twentyFourHoursMs
+
+            // Calculate pixel positions
+            val totalWidthPx = with(density) { 1200.dp.toPx() }
+            val currentXPx = fraction * totalWidthPx
+            val viewportWidthPx = totalWidthPx - scrollState.maxValue
+
+            // Scroll to the current time, subtracting half the screen width so it sits in the middle
+            val targetScroll = (currentXPx - (viewportWidthPx / 2f)).toInt().coerceIn(0, scrollState.maxValue)
+
+            scrollState.scrollTo(targetScroll)
+        }
     }
 
     val minBg = 40f
     val maxBg = 350f
     val rangeBg = maxBg - minBg
-    val topPadding = 50f // Extra padding for floating icons
+    val topPadding = 50f
     val bottomPadding = 60f
 
     Row(modifier = modifier) {
@@ -200,7 +219,7 @@ fun TimeScaledBgGraph(
                     return (elapsedMs / twentyFourHoursMs) * graphWidth
                 }
 
-                // 1. Draw Target Range Background (70 - 180 mg/dL)
+                // 1. Draw Target Range Background
                 val targetTopY = bgToY(180f)
                 val targetBottomY = bgToY(70f)
 
@@ -276,14 +295,12 @@ fun TimeScaledBgGraph(
 
                     if (hasEvent) {
                         val x = timeToX(log.timestamp)
-                        // Float above BG dot if exists, else pin to bottom
                         val y = if (log.bloodGlucose > 0) {
                             bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg)) - 45f
                         } else {
                             size.height - bottomPadding - 35f
                         }
 
-                        // Determine the exact painter and color matching the History screen
                         val (painter, tintColor) = when {
                             log.isSportModeActive || log.eventType == "SPORT" -> sportPainter to Color(0xFF00695C)
                             log.eventType == "SMART_BOLUS" -> bolusPainter to Color(0xFFFF9800)
@@ -292,13 +309,11 @@ fun TimeScaledBgGraph(
                             else -> checkPainter to Color(0xFFD32F2F)
                         }
 
-                        // Draw background circle for the icon
                         drawCircle(
                             color = Color.White.copy(alpha = 0.95f),
                             radius = 24f,
                             center = Offset(x, y)
                         )
-                        // Add a subtle border
                         drawCircle(
                             color = tintColor.copy(alpha = 0.2f),
                             radius = 24f,
@@ -306,7 +321,6 @@ fun TimeScaledBgGraph(
                             style = Stroke(width = 2f)
                         )
 
-                        // Draw the Material Icon Vector
                         val iconSize = 32f
                         translate(left = x - iconSize / 2f, top = y - iconSize / 2f) {
                             with(painter) {
@@ -322,7 +336,6 @@ fun TimeScaledBgGraph(
         }
     }
 }
-
 // --- COMPACT COMPONENTS ---
 
 @Composable

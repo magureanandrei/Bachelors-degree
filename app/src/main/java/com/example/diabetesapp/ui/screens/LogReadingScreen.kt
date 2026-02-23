@@ -9,8 +9,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.repository.BolusLogRepository
+import com.example.diabetesapp.viewmodel.InsightType
 import com.example.diabetesapp.viewmodel.LogReadingViewModel
 import com.example.diabetesapp.viewmodel.LogReadingViewModelFactory
 
@@ -80,8 +82,7 @@ fun LogReadingScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
-            // --- NEW: Time & Date Fields ---
+            // Time & Date Fields
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = uiState.eventTime,
@@ -134,7 +135,7 @@ fun LogReadingScreen(
                 }
             }
 
-            // --- SPORT MODE SECTION ---
+            // SPORT MODE SECTION
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -206,52 +207,72 @@ fun LogReadingScreen(
                 }
             }
 
+            // CRITICAL CHANGE: Changed button text and action
             Button(
-                onClick = { viewModel.attemptSave() },
+                onClick = { viewModel.analyzeLog() },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Save Event", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Analyze & Log", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 
-    // --- DIALOGS (Kept exactly the same as the previous response) ---
-    // (Carb Suggestion Dialog)
-    if (uiState.showCarbSuggestionDialog) {
+    // --- THE UNIFIED INSIGHT DIALOG ---
+    uiState.currentInsight?.let { insight ->
+
+        // Dynamic styling based on the insight type
+        val (icon, color, bgColor) = when (insight.type) {
+            InsightType.ON_TRACK -> Triple(Icons.Default.CheckCircle, Color(0xFF2E7D32), Color(0xFFE8F5E9))
+            InsightType.WARNING -> Triple(Icons.Default.Warning, Color(0xFFD32F2F), Color(0xFFFFEBEE))
+            InsightType.SUGGESTION -> Triple(Icons.Default.Info, Color(0xFF1976D2), Color(0xFFE3F2FD))
+        }
+
         AlertDialog(
-            onDismissRequest = { viewModel.dismissCarbDialog() },
-            title = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63)); Spacer(modifier = Modifier.width(8.dp)); Text("Carbs Recommended", fontWeight = FontWeight.Bold, color = Color(0xFFE91E63)) } },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(uiState.carbSuggestionMessage, fontSize = 14.sp)
-                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFCE4EC)), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Suggested Intake:", color = Color.Gray, fontSize = 12.sp)
-                            Text("${uiState.suggestedCarbs}g Carbs", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, color = Color(0xFFE91E63))
-                        }
-                    }
+            onDismissRequest = { viewModel.dismissInsightDialog() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, contentDescription = null, tint = color)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(insight.title, fontWeight = FontWeight.Bold, color = color, fontSize = 20.sp)
                 }
             },
-            confirmButton = { Button(onClick = { viewModel.updateCarbs(uiState.suggestedCarbs.toString()); viewModel.dismissCarbDialog(); viewModel.executeSave() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63))) { Text("Add Carbs & Log") } },
-            dismissButton = { TextButton(onClick = { viewModel.dismissCarbDialog(); viewModel.executeSave() }) { Text("Ignore & Log Anyway", color = Color.Gray) } },
-            containerColor = Color.White
+            text = {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = bgColor),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = insight.message,
+                        fontSize = 15.sp,
+                        color = Color.DarkGray,
+                        modifier = Modifier.padding(16.dp),
+                        lineHeight = 22.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.executeSave() },
+                    colors = ButtonDefaults.buttonColors(containerColor = color),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Confirm & Log")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissInsightDialog() }) {
+                    Text("Edit Entry", color = Color.Gray)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
         )
     }
 
-    // (Post Sport Alert Dialog)
-    if (uiState.showPostSportAlert) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissPostSportAlert() },
-            title = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Info, null, tint = Color(0xFF00695C)); Spacer(modifier = Modifier.width(8.dp)); Text("Clinical Insight", fontWeight = FontWeight.Bold, color = Color(0xFF00695C)) } },
-            text = { Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)), shape = RoundedCornerShape(12.dp)) { Text(text = uiState.postSportAlertMessage, fontSize = 14.sp, color = Color(0xFF004D40), modifier = Modifier.padding(16.dp), lineHeight = 20.sp) } },
-            confirmButton = { Button(onClick = { viewModel.dismissPostSportAlert(); viewModel.executeSave() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))) { Text("Understood, Log Event") } },
-            containerColor = Color.White
-        )
-    }
-
-    // (Info Dialog)
+    // (Info Dialog for Sport Types remains the same)
     if (showSportInfoDialog) {
         AlertDialog(
             onDismissRequest = { showSportInfoDialog = false },
@@ -270,7 +291,7 @@ fun LogReadingScreen(
     }
 }
 
-// ... KEEP LARGEINPUTFIELD AND STANDARDINPUTFIELD EXACTLY THE SAME ...
+// ... LargeInputField and StandardInputField remain exactly the same
 @Composable
 fun LargeInputField(label: String, value: String, onValueChange: (String) -> Unit, unit: String, placeholder: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
