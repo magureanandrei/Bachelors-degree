@@ -2,6 +2,7 @@ package com.example.diabetesapp.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,7 +55,8 @@ fun CalculateBolusScreen(
 
     LaunchedEffect(inputState.warningMessage) {
         inputState.warningMessage?.let { message ->
-            snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Long)
+            snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
+            viewModel.clearWarningMessage() // Clears it so it doesn't pop up again on rotation
         }
     }
 
@@ -88,11 +90,12 @@ fun CalculateBolusScreen(
                     calculatedDose = inputState.calculatedDose!!,
                     userAdjustedDose = inputState.userAdjustedDose,
                     isSportModeActive = inputState.isSportModeActive,
+                    minutesUntilSport = inputState.minutesUntilSport,
                     sportLog = inputState.sportReductionLog,
                     onAdjustDose = { delta -> viewModel.adjustSuggestedDose(delta) },
                     onDismiss = { viewModel.dismissResultDialog() },
                     onLogAndSave = {
-                        viewModel.logEntry()
+                        viewModel.logEntry(context)
                         viewModel.dismissResultDialog()
                         onNavigateBack() // Navigate Back to Home
                     },
@@ -111,188 +114,232 @@ fun CalculatorView(
     inputState: BolusInputState,
     viewModel: CalculateBolusViewModel
 ) {
-    // State to control the visibility of the educational popup
     var showSportInfoDialog by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    // --- NEW: Time Picker Setup ---
+    val context = LocalContext.current
+
+    // Parse the current planned time to set the picker's initial position
+    val timeParts = inputState.plannedSportTime.split(":")
+    val initialHour = timeParts.getOrNull(0)?.toIntOrNull() ?: java.time.LocalTime.now().hour
+    val initialMinute = timeParts.getOrNull(1)?.toIntOrNull() ?: java.time.LocalTime.now().minute
+
+    val timePickerDialog = android.app.TimePickerDialog(
+        context,
+        { _, selectedHour, selectedMinute ->
+            // Format back to HH:mm and send to ViewModel
+            val formattedTime = String.format(java.util.Locale.getDefault(), "%02d:%02d", selectedHour, selectedMinute)
+            viewModel.updatePlannedSportTime(formattedTime)
+        },
+        initialHour,
+        initialMinute,
+        true // Use 24-hour clock
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+        // Info Banner
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)), // Light Blue
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
         ) {
-            Text(
-                text = "Blood Glucose",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.Gray
-            )
-            OutlinedTextField(
-                value = inputState.bloodGlucose,
-                onValueChange = { viewModel.updateBloodGlucose(it) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Enter BG (mg/dL)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                isError = inputState.bloodGlucoseError != null,
-                supportingText = inputState.bloodGlucoseError?.let { { Text(it, color = Color.Red) } },
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Text(
-                text = "Carbohydrates",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.Gray
-            )
-            OutlinedTextField(
-                value = inputState.carbs,
-                onValueChange = { viewModel.updateCarbs(it) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Enter carbs (g)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                isError = inputState.carbsError != null,
-                supportingText = inputState.carbsError?.let { { Text(it, color = Color.Red) } },
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            // Sport Mode Section
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (inputState.isSportModeActive) Color(0xFFE0F2F1) else Color(0xFFF5F5F5)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Sport Mode",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Switch(
-                            checked = inputState.isSportModeActive,
-                            onCheckedChange = { viewModel.toggleSportMode(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF00695C)
-                            )
-                        )
-                    }
-
-                    AnimatedVisibility(visible = inputState.isSportModeActive) {
-                        Column(
-                            modifier = Modifier.padding(top = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // Sport Type Header with Info Icon
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Sport Type", fontSize = 14.sp, color = Color.Gray)
-                                IconButton(
-                                    onClick = { showSportInfoDialog = true },
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .padding(start = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Info,
-                                        contentDescription = "Sport Type Info",
-                                        tint = Color.Gray,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-
-                            // The updated tightly-packed button row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                listOf("Aerobic", "Mixed", "Anaerobic").forEach { type ->
-                                    OutlinedButton(
-                                        onClick = { viewModel.updateSportType(type) },
-                                        modifier = Modifier.weight(1f),
-                                        // PaddingValues(0.dp) removes the extra space so words fit
-                                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(
-                                            containerColor = if (inputState.sportType == type) Color(0xFF00695C) else Color.Transparent,
-                                            contentColor = if (inputState.sportType == type) Color.White else Color(0xFF00695C)
-                                        )
-                                    ) {
-                                        Text(
-                                            text = type,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Intensity Slider
-                            Text("Intensity: ${inputState.sportIntensity}", fontSize = 14.sp, color = Color.Gray)
-                            Slider(
-                                value = inputState.sportIntensityValue,
-                                onValueChange = { viewModel.updateSportIntensity(it) },
-                                valueRange = 1f..3f,
-                                steps = 1,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color(0xFF00695C),
-                                    activeTrackColor = Color(0xFF00695C)
-                                )
-                            )
-
-                            // Duration Slider
-                            Text("Duration: ${inputState.sportDurationMinutes.toInt()} min", fontSize = 14.sp, color = Color.Gray)
-                            Slider(
-                                value = inputState.sportDurationMinutes,
-                                onValueChange = { viewModel.updateSportDuration(it) },
-                                valueRange = 15f..120f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color(0xFF00695C),
-                                    activeTrackColor = Color(0xFF00695C)
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Notes
-            OutlinedTextField(
-                value = inputState.notes,
-                onValueChange = { viewModel.updateNotes(it) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Notes (optional)") },
-                shape = RoundedCornerShape(12.dp),
-                minLines = 2
-            )
-
-            // Calculate Button
-            Button(
-                onClick = { viewModel.calculateBolus() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
+            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF1976D2))
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Calculate Bolus",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "Smart Bolus is a proactive tool for calculating doses and planning future activities. For past events, use the Manual Log.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF0D47A1),
+                    lineHeight = 18.sp
                 )
             }
         }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Blood Glucose",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.Gray
+                )
+                OutlinedTextField(
+                    value = inputState.bloodGlucose,
+                    onValueChange = { viewModel.updateBloodGlucose(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Enter BG (mg/dL)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = inputState.bloodGlucoseError != null,
+                    supportingText = inputState.bloodGlucoseError?.let { { Text(it, color = Color.Red) } },
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text(
+                    text = "Carbohydrates",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.Gray
+                )
+                OutlinedTextField(
+                    value = inputState.carbs,
+                    onValueChange = { viewModel.updateCarbs(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Enter carbs (g)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = inputState.carbsError != null,
+                    supportingText = inputState.carbsError?.let { { Text(it, color = Color.Red) } },
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Sport Mode Section
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (inputState.isSportModeActive) Color(0xFFE0F2F1) else Color(0xFFF5F5F5)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Sport Mode",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Switch(
+                                checked = inputState.isSportModeActive,
+                                onCheckedChange = { viewModel.toggleSportMode(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF00695C)
+                                )
+                            )
+                        }
+
+                        AnimatedVisibility(visible = inputState.isSportModeActive) {
+                            Column(
+                                modifier = Modifier.padding(top = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Sport Type Header
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Sport Type", fontSize = 14.sp, color = Color.Gray)
+                                    IconButton(
+                                        onClick = { showSportInfoDialog = true },
+                                        modifier = Modifier.size(24.dp).padding(start = 4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Info, contentDescription = "Sport Info", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    listOf("Aerobic", "Mixed", "Anaerobic").forEach { type ->
+                                        OutlinedButton(
+                                            onClick = { viewModel.updateSportType(type) },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                containerColor = if (inputState.sportType == type) Color(0xFF00695C) else Color.Transparent,
+                                                contentColor = if (inputState.sportType == type) Color.White else Color(0xFF00695C)
+                                            )
+                                        ) {
+                                            Text(type, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
+
+                                // --- NATIVE TIME PICKER BUTTON ---
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Start Time", fontSize = 14.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                        if (inputState.minutesUntilSport > 0) {
+                                            Text("In ~${inputState.minutesUntilSport.toInt()} mins", fontSize = 12.sp, color = Color(0xFFFF9800))
+                                        } else {
+                                            Text("Right Now", fontSize = 12.sp, color = Color(0xFF00695C))
+                                        }
+                                    }
+
+                                    // Make the text field act like a button
+                                    Box(modifier = Modifier.clickable { timePickerDialog.show() }) {
+                                        OutlinedTextField(
+                                            value = inputState.plannedSportTime,
+                                            onValueChange = { }, // Ignored, handled by picker
+                                            modifier = Modifier.width(100.dp),
+                                            readOnly = true, // PREVENTS KEYBOARD FROM OPENING
+                                            enabled = false, // Makes the box ignore standard focus
+                                            shape = RoundedCornerShape(8.dp),
+                                            singleLine = true,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                disabledTextColor = Color.Black,
+                                                disabledBorderColor = if (inputState.minutesUntilSport > 0) Color(0xFFFF9800) else Color.LightGray
+                                            )
+                                        )
+                                    }
+                                }
+
+                                // Intensity Slider
+                                Text("Intensity: ${inputState.sportIntensity}", fontSize = 14.sp, color = Color.Gray)
+                                Slider(
+                                    value = inputState.sportIntensityValue,
+                                    onValueChange = { viewModel.updateSportIntensity(it) },
+                                    valueRange = 1f..3f, steps = 1,
+                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C))
+                                )
+
+                                // Duration Slider
+                                Text("Duration: ${inputState.sportDurationMinutes.toInt()} min", fontSize = 14.sp, color = Color.Gray)
+                                Slider(
+                                    value = inputState.sportDurationMinutes,
+                                    onValueChange = { viewModel.updateSportDuration(it) },
+                                    valueRange = 15f..120f,
+                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C))
+                                )
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = inputState.notes,
+                    onValueChange = { viewModel.updateNotes(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Notes (optional)") },
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 2
+                )
+
+                Button(
+                    onClick = { viewModel.calculateBolus() },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Calculate Bolus", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
     }
+    // ... Keep the showSportInfoDialog code exactly the same below this
 
     // The Educational Dialog
     if (showSportInfoDialog) {
@@ -340,6 +387,7 @@ fun ResultDialog(
     calculatedDose: Double,
     userAdjustedDose: Double?,
     isSportModeActive: Boolean,
+    minutesUntilSport: Float,
     sportLog: String,
     onAdjustDose: (Double) -> Unit,
     onDismiss: () -> Unit,
@@ -347,15 +395,16 @@ fun ResultDialog(
     onGoHome: () -> Unit
 ) {
     val displayDose = userAdjustedDose ?: calculatedDose
+    val isPlanned = isSportModeActive && minutesUntilSport > 0
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = if (isSportModeActive) "Sport Adjusted Dose" else "Standard Dose",
+                text = if (isPlanned) "Pre-Workout Strategy" else if (isSportModeActive) "Sport Adjusted Dose" else "Standard Dose",
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
-                color = if (isSportModeActive) Color(0xFF00695C) else Color(0xFF2E7D32)
+                color = if (isPlanned) Color(0xFFFF9800) else if (isSportModeActive) Color(0xFF00695C) else Color(0xFF2E7D32)
             )
         },
         text = {
@@ -368,7 +417,7 @@ fun ResultDialog(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isSportModeActive) Color(0xFFE0F2F1) else Color(0xFFE8F5E9)
+                        containerColor = if (isPlanned) Color(0xFFFFF3E0) else if (isSportModeActive) Color(0xFFE0F2F1) else Color(0xFFE8F5E9)
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -386,7 +435,7 @@ fun ResultDialog(
                         ) {
                             // Minus Button
                             IconButton(
-                                onClick = { onAdjustDose(-0.1) }, // <-- Changed to 0.1
+                                onClick = { onAdjustDose(-0.1) },
                                 modifier = Modifier.background(Color.White, RoundedCornerShape(8.dp))
                             ) {
                                 Text("-", fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -398,14 +447,14 @@ fun ResultDialog(
                                     text = "%.1f".format(java.util.Locale.US, displayDose),
                                     fontSize = 48.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2E7D32) // Dark Green
+                                    color = if (isPlanned) Color(0xFFFF9800) else Color(0xFF2E7D32)
                                 )
-                                Text("Units", fontSize = 16.sp, color = Color(0xFF2E7D32))
+                                Text("Units", fontSize = 16.sp, color = if (isPlanned) Color(0xFFFF9800) else Color(0xFF2E7D32))
                             }
 
                             // Plus Button
                             IconButton(
-                                onClick = { onAdjustDose(0.1) }, // <-- Changed to 0.1
+                                onClick = { onAdjustDose(0.1) },
                                 modifier = Modifier.background(Color.White, RoundedCornerShape(8.dp))
                             ) {
                                 Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -417,7 +466,7 @@ fun ResultDialog(
                             Text(
                                 text = "Suggested: %.1f U".format(java.util.Locale.US, calculatedDose),
                                 fontSize = 12.sp,
-                                color = Color(0xFF81C784), // Light Green
+                                color = if (isPlanned) Color(0xFFFFB74D) else Color(0xFF81C784),
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                         }
@@ -443,10 +492,10 @@ fun ResultDialog(
             Button(
                 onClick = onLogAndSave,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                colors = ButtonDefaults.buttonColors(containerColor = if (isPlanned) Color(0xFFFF9800) else Color(0xFF2E7D32)),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Log & Administer", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(if (isPlanned) "Save Planned Workout" else "Log & Administer", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         },
         shape = RoundedCornerShape(20.dp),

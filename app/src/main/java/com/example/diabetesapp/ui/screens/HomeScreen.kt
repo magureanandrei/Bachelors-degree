@@ -2,6 +2,7 @@ package com.example.diabetesapp.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +42,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
 fun HomeScreen(
@@ -54,10 +57,19 @@ fun HomeScreen(
     val viewModel: DashboardViewModel = viewModel(factory = DashboardViewModelFactory(repository))
 
     val allLogs by viewModel.allLogs.collectAsState()
+
+    // 1. NEW: Collect the pending workout state
+    val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
+
     val logicalDayStart = remember { getLogicalDayStartTimestamp() }
     val todaysLogs = allLogs.filter { it.timestamp >= logicalDayStart }.sortedBy { it.timestamp }
 
     var selectedLogForModal by remember { mutableStateOf<BolusLog?>(null) }
+
+    // 2. NEW: Check for pending workouts every time logs update
+    LaunchedEffect(allLogs) {
+        viewModel.checkForPendingWorkouts(allLogs)
+    }
 
     Column(
         modifier = modifier
@@ -65,19 +77,15 @@ fun HomeScreen(
             .background(Color(0xFFF5F5F5))
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp) // Slightly tightened spacing
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         HeaderSection()
-
-        // --- NEW PLACEMENT: Disclaimer always visible at the top ---
         DisclaimerBanner()
-
         DashboardActionButtons(
             onSmartBolusClick = onNavigateToCalculateBolus,
             onManualLogClick = onNavigateToLogReading
         )
 
-        // 1. The Scrollable Dashboard Graph Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -88,20 +96,19 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (todaysLogs.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(250.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                         Text("No data logged today.", color = Color.Gray)
                     }
                 } else {
                     TimeScaledBgGraph(
                         logs = todaysLogs,
                         dayStartTimestamp = logicalDayStart,
-                        modifier = Modifier.fillMaxWidth().height(250.dp)
+                        modifier = Modifier.fillMaxWidth().height(200.dp)
                     )
                 }
             }
         }
 
-        // 2. Today's Entries Section (Compact)
         Text("Today's Logs", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
 
         if (todaysLogs.isEmpty()) {
@@ -112,18 +119,28 @@ fun HomeScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 todaysLogs.reversed().forEach { log ->
                     CompactLogEntryCard(log = log) {
-                        selectedLogForModal = log // Open modal on click
+                        selectedLogForModal = log
                     }
                 }
             }
         }
-
         Spacer(modifier = Modifier.height(24.dp))
     }
 
-    // Log Details Modal
+    // --- MODALS ---
     selectedLogForModal?.let { log ->
         LogDetailsDialog(log = log, onDismiss = { selectedLogForModal = null })
+    }
+
+    // 3. NEW: The Verification Prompt Dialog
+    unverifiedWorkout?.let { workout ->
+        PostWorkoutVerificationDialog(
+            log = workout,
+            onDismiss = { viewModel.dismissVerification() },
+            onConfirm = { duration, intensity, type, starttime ->
+                viewModel.verifyAndCompleteWorkout(workout, duration, intensity, type, starttime)
+            }
+        )
     }
 }
 // Logical Day Start (3 AM Cutoff)
@@ -147,31 +164,20 @@ fun TimeScaledBgGraph(
     val scrollState = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
 
-    // Icon Painters for Canvas
-    val sportPainter = rememberVectorPainter(Icons.Default.DirectionsRun)
     val bolusPainter = rememberVectorPainter(Icons.Default.AutoFixHigh)
     val mealPainter = rememberVectorPainter(Icons.Default.Restaurant)
     val manualInsulinPainter = rememberVectorPainter(Icons.Default.Vaccines)
-    val checkPainter = rememberVectorPainter(Icons.Default.Bloodtype)
 
-    // Auto-scroll so the "Current Time" is centered on the screen when the graph loads
     LaunchedEffect(scrollState.maxValue) {
         if (scrollState.maxValue > 0) {
             val twentyFourHoursMs = 24 * 60 * 60 * 1000f
             val currentTime = System.currentTimeMillis()
             val elapsedMs = (currentTime - dayStartTimestamp).coerceIn(0L, twentyFourHoursMs.toLong())
-
-            // What percentage of the day has passed?
             val fraction = elapsedMs / twentyFourHoursMs
-
-            // Calculate pixel positions
             val totalWidthPx = with(density) { 1200.dp.toPx() }
             val currentXPx = fraction * totalWidthPx
             val viewportWidthPx = totalWidthPx - scrollState.maxValue
-
-            // Scroll to the current time, subtracting half the screen width so it sits in the middle
             val targetScroll = (currentXPx - (viewportWidthPx / 2f)).toInt().coerceIn(0, scrollState.maxValue)
-
             scrollState.scrollTo(targetScroll)
         }
     }
@@ -179,18 +185,18 @@ fun TimeScaledBgGraph(
     val minBg = 40f
     val maxBg = 350f
     val rangeBg = maxBg - minBg
-    val topPadding = 50f
-    val bottomPadding = 60f
+
+    // Adjusted padding for 2 lanes + X-Axis
+    val topPadding = 40f
+    val bottomPadding = 120f
 
     Row(modifier = modifier) {
         // --- FIXED Y-AXIS (Pinned to the left) ---
-        Canvas(modifier = Modifier.width(36.dp).fillMaxHeight()) {
+        Canvas(modifier = Modifier.width(42.dp).fillMaxHeight()) {
             val graphHeight = size.height - bottomPadding - topPadding
+            fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
 
-            fun bgToY(bg: Float): Float {
-                return topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
-            }
-
+            // BG Labels
             val yLabels = listOf(70f, 180f, 300f)
             yLabels.forEach { bg ->
                 drawText(
@@ -200,141 +206,249 @@ fun TimeScaledBgGraph(
                     topLeft = Offset(0f, bgToY(bg) - 20f)
                 )
             }
+
+            // Swimlane Labels (Centered in their respective 40f-high lanes)
+            val carbsY = size.height - 100f
+            val insulinY = size.height - 60f
+
+            drawText(textMeasurer = textMeasurer, text = "Carbs", style = TextStyle(color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold), topLeft = Offset(0f, carbsY - 15f))
+            drawText(textMeasurer = textMeasurer, text = "Ins", style = TextStyle(color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold), topLeft = Offset(0f, insulinY - 15f))
         }
 
         // --- SCROLLABLE GRAPH AREA ---
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(scrollState)
-        ) {
+        Box(modifier = Modifier.weight(1f).horizontalScroll(scrollState)) {
             Canvas(modifier = Modifier.width(1200.dp).fillMaxHeight()) {
                 val graphWidth = size.width
                 val graphHeight = size.height - bottomPadding - topPadding
                 val twentyFourHoursMs = 24 * 60 * 60 * 1000f
 
                 fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
-                fun timeToX(timestamp: Long): Float {
-                    val elapsedMs = (timestamp - dayStartTimestamp).coerceIn(0, twentyFourHoursMs.toLong())
-                    return (elapsedMs / twentyFourHoursMs) * graphWidth
+                fun timeToX(timestamp: Long): Float = ((timestamp - dayStartTimestamp).coerceIn(0, twentyFourHoursMs.toLong()) / twentyFourHoursMs) * graphWidth
+
+                // Swimlane Y-Coordinates (Perfectly centered in their tracks)
+                val carbsY = size.height - 100f
+                val insulinY = size.height - 60f
+
+                // 1. Target Range
+                drawRoundRect(color = Color(0xFFE8F5E9), topLeft = Offset(0f, bgToY(180f)), size = Size(graphWidth, bgToY(70f) - bgToY(180f)), cornerRadius = CornerRadius(4f, 4f))
+                listOf(70f, 180f, 300f).forEach { bg -> drawLine(if (bg == 70f || bg == 180f) Color(0xFFA5D6A7) else Color(0xFFEEEEEE), Offset(0f, bgToY(bg)), Offset(graphWidth, bgToY(bg)), if (bg == 70f || bg == 180f) 2f else 1f) }
+
+                // 2. Draw Swimlane Dividers (Spacing them 40px apart)
+                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 120f), Offset(graphWidth, size.height - 120f), 2f) // Top of Carbs
+                drawLine(Color(0xFFF5F5F5), Offset(0f, size.height - 80f), Offset(graphWidth, size.height - 80f), 1f)   // Divider between Carbs/Insulin
+                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 40f), Offset(graphWidth, size.height - 40f), 2f) // Bottom of Insulin (Top of Time Axis)
+
+                // 3. DRAW SPORT DURATIONS (Shaded Rectangles)
+                logs.filter { it.isSportModeActive && it.sportDuration != null }.forEach { sportLog ->
+                    val startX = timeToX(sportLog.timestamp)
+                    val endX = timeToX(sportLog.timestamp + (sportLog.sportDuration!!.toLong() * 60 * 1000L))
+                    val isPlanned = sportLog.status == "PLANNED"
+
+                    val shadeColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f) else Color(0xFF00695C).copy(alpha = 0.15f)
+
+                    // Box exactly matches graphHeight so it doesn't bleed into the swimlanes
+                    drawRect(color = shadeColor, topLeft = Offset(startX, topPadding), size = Size(endX - startX, graphHeight))
+
+                    val borderColor = if (isPlanned) Color(0xFFFF9800) else Color(0xFF00695C)
+                    val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+
+                    drawLine(color = borderColor, start = Offset(startX, topPadding), end = Offset(startX, topPadding + graphHeight), strokeWidth = 3f, pathEffect = pathEffect)
+                    drawLine(color = borderColor, start = Offset(endX, topPadding), end = Offset(endX, topPadding + graphHeight), strokeWidth = 3f, pathEffect = pathEffect)
                 }
 
-                // 1. Draw Target Range Background
-                val targetTopY = bgToY(180f)
-                val targetBottomY = bgToY(70f)
-
-                drawRoundRect(
-                    color = Color(0xFFE8F5E9),
-                    topLeft = Offset(0f, targetTopY),
-                    size = Size(graphWidth, targetBottomY - targetTopY),
-                    cornerRadius = CornerRadius(4f, 4f)
-                )
-
-                // Grid lines matching the Y-axis
-                listOf(70f, 180f, 300f).forEach { bg ->
-                    val yLine = bgToY(bg)
-                    val color = if (bg == 70f || bg == 180f) Color(0xFFA5D6A7) else Color(0xFFEEEEEE)
-                    val stroke = if (bg == 70f || bg == 180f) 2f else 1f
-                    drawLine(color, Offset(0f, yLine), Offset(graphWidth, yLine), stroke)
-                }
-
-                // 2. Draw X-Axis Labels
+                // 4. X-Axis Time Labels (Bottom track)
                 val xLabels = listOf(0, 3, 6, 9, 12, 15, 18, 21, 24)
                 val hourStrings = listOf("3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM", "12 AM", "3 AM")
-
                 xLabels.forEachIndexed { index, hoursElapsed ->
-                    val xMs = dayStartTimestamp + (hoursElapsed * 60 * 60 * 1000L)
-                    val xPos = timeToX(xMs)
-
-                    drawLine(Color(0xFFF5F5F5), Offset(xPos, topPadding), Offset(xPos, size.height - bottomPadding), 1f)
-                    drawLine(Color.LightGray, Offset(xPos, size.height - bottomPadding), Offset(xPos, size.height - bottomPadding + 10f), 2f)
-
+                    val xPos = timeToX(dayStartTimestamp + (hoursElapsed * 60 * 60 * 1000L))
+                    // Vertical grid line matching the labels
+                    drawLine(Color(0xFFF5F5F5), Offset(xPos, topPadding), Offset(xPos, size.height - 40f), 1f)
+                    // Tick mark
+                    drawLine(Color.LightGray, Offset(xPos, size.height - 40f), Offset(xPos, size.height - 30f), 2f)
+                    // Time text
                     drawText(
                         textMeasurer = textMeasurer,
                         text = hourStrings[index],
                         style = TextStyle(color = Color.Gray, fontSize = 10.sp),
-                        topLeft = Offset(xPos - 25f, size.height - 40f)
-                    )
-                }
+                        topLeft = Offset(xPos - 15f, size.height - 30f)
+                    )                }
 
                 if (logs.isEmpty()) return@Canvas
 
-                // 3. Draw Data Path (Only connect lines for logs with BG > 0)
+                // 5. Draw BG Trend Line and Dots
                 val bgLogs = logs.filter { it.bloodGlucose > 0 }
                 if (bgLogs.isNotEmpty()) {
                     val path = Path()
                     val points = mutableListOf<Offset>()
-
                     bgLogs.forEachIndexed { index, log ->
                         val x = timeToX(log.timestamp)
                         val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
-                        val point = Offset(x, y)
-                        points.add(point)
-
+                        points.add(Offset(x, y))
                         if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                     }
-
                     drawPath(path = path, color = Color(0xFF00897B), style = Stroke(width = 4f))
-
-                    // Draw Data Points
                     points.forEachIndexed { index, point ->
                         val bg = bgLogs[index].bloodGlucose.toFloat()
-                        val dotColor = when {
-                            bg > 180 -> Color(0xFFFFB74D)
-                            bg < 70 -> Color(0xFFE53935)
-                            else -> Color(0xFF00897B)
-                        }
-                        drawCircle(color = Color.White, radius = 10f, center = point)
-                        drawCircle(color = dotColor, radius = 7f, center = point)
+                        val dotColor = when { bg > 180 -> Color(0xFFFFB74D); bg < 70 -> Color(0xFFE53935); else -> Color(0xFF00897B) }
+                        drawCircle(color = Color.White, radius = 8f, center = point)
+                        drawCircle(color = dotColor, radius = 6f, center = point)
                     }
                 }
 
-                // 4. DRAW EVENT ICONS
+                // 6. DRAW SWIMLANE ICONS (No Text!)
                 logs.forEach { log ->
-                    val hasEvent = log.carbs > 0 || log.administeredDose > 0 || log.isSportModeActive || log.eventType == "SMART_BOLUS" || log.eventType == "BG_CHECK"
+                    val x = timeToX(log.timestamp)
+                    val iconRadius = 12f
 
-                    if (hasEvent) {
-                        val x = timeToX(log.timestamp)
-                        val y = if (log.bloodGlucose > 0) {
-                            bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg)) - 45f
-                        } else {
-                            size.height - bottomPadding - 35f
+                    // Helper to draw just the icon + circle
+                    fun drawSwimlaneIcon(yPos: Float, painter: androidx.compose.ui.graphics.vector.VectorPainter, tint: Color) {
+                        drawCircle(color = Color.White.copy(alpha = 0.9f), radius = iconRadius, center = Offset(x, yPos))
+                        drawCircle(color = tint.copy(alpha = 0.3f), radius = iconRadius, center = Offset(x, yPos), style = Stroke(width = 1.5f))
+
+                        translate(left = x - 8f, top = yPos - 8f) {
+                            with(painter) { draw(size = Size(16f, 16f), colorFilter = ColorFilter.tint(tint)) }
                         }
+                    }
 
-                        val (painter, tintColor) = when {
-                            log.isSportModeActive || log.eventType == "SPORT" -> sportPainter to Color(0xFF00695C)
-                            log.eventType == "SMART_BOLUS" -> bolusPainter to Color(0xFFFF9800)
-                            log.carbs > 0 && log.administeredDose == 0.0 -> mealPainter to Color(0xFFE91E63)
-                            log.administeredDose > 0 -> manualInsulinPainter to Color(0xFF1976D2)
-                            else -> checkPainter to Color(0xFFD32F2F)
-                        }
+                    // LANE 1: Carbs
+                    if (log.carbs > 0) {
+                        drawSwimlaneIcon(carbsY, mealPainter, Color(0xFFE91E63))
+                    }
 
-                        drawCircle(
-                            color = Color.White.copy(alpha = 0.95f),
-                            radius = 24f,
-                            center = Offset(x, y)
-                        )
-                        drawCircle(
-                            color = tintColor.copy(alpha = 0.2f),
-                            radius = 24f,
-                            center = Offset(x, y),
-                            style = Stroke(width = 2f)
-                        )
-
-                        val iconSize = 32f
-                        translate(left = x - iconSize / 2f, top = y - iconSize / 2f) {
-                            with(painter) {
-                                draw(
-                                    size = Size(iconSize, iconSize),
-                                    colorFilter = ColorFilter.tint(tintColor)
-                                )
-                            }
-                        }
+                    // LANE 2: Insulin
+                    if (log.administeredDose > 0 || log.eventType == "SMART_BOLUS") {
+                        val tint = if (log.eventType == "SMART_BOLUS") Color(0xFFFF9800) else Color(0xFF1976D2)
+                        val painter = if (log.eventType == "SMART_BOLUS") bolusPainter else manualInsulinPainter
+                        drawSwimlaneIcon(insulinY, painter, tint)
                     }
                 }
             }
         }
     }
+}
+// --- NEW: Post Workout Dialog ---
+
+@Composable
+fun PostWorkoutVerificationDialog(
+    log: BolusLog,
+    onDismiss: () -> Unit,
+    onConfirm: (Float, Float, String, String) -> Unit // Added the 4th parameter (String) for start time
+) {
+    var isEditing by remember { mutableStateOf(false) }
+
+    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+    // Editable States
+    var duration by remember { mutableStateOf(log.sportDuration ?: 45f) }
+    var intensity by remember { mutableStateOf(when(log.sportIntensity) { "Low" -> 1f; "High" -> 3f; else -> 2f }) }
+    var sportType by remember { mutableStateOf(log.sportType ?: "Aerobic") }
+    var startTimeStr by remember { mutableStateOf(formatter.format(Date(log.timestamp))) } // NEW state
+
+    // --- NEW: Time Picker Setup ---
+    val context = LocalContext.current
+    val timeParts = startTimeStr.split(":")
+    val initialHour = timeParts.getOrNull(0)?.toIntOrNull() ?: 12
+    val initialMinute = timeParts.getOrNull(1)?.toIntOrNull() ?: 0
+
+    val timePickerDialog = android.app.TimePickerDialog(
+        context,
+        { _, selectedHour, selectedMinute ->
+            startTimeStr = String.format(Locale.getDefault(), "%02d:%02d", selectedHour, selectedMinute)
+        },
+        initialHour,
+        initialMinute,
+        true // 24-hour clock
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.DirectionsRun, contentDescription = null, tint = Color(0xFF00695C))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Workout Complete?", fontWeight = FontWeight.Bold, color = Color(0xFF00695C), fontSize = 20.sp)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Show original plan in the helper text
+                val originalTime = formatter.format(Date(log.timestamp))
+                Text("You planned a ${log.sportDuration?.toInt()} min ${log.sportType} workout at $originalTime.", color = Color.DarkGray)
+
+                if (!isEditing) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)), modifier = Modifier.fillMaxWidth()) {
+                        Text("Did everything go as planned?", modifier = Modifier.padding(16.dp), fontWeight = FontWeight.Medium, color = Color(0xFF004D40))
+                    }
+                } else {
+                    // EDIT MODE
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        HorizontalDivider()
+                        Text("Update Details:", fontWeight = FontWeight.Bold)
+
+                        // --- NEW: Start Time Editor ---
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Actual Start Time:", fontSize = 14.sp)
+                            Box(modifier = Modifier.clickable { timePickerDialog.show() }) {
+                                OutlinedTextField(
+                                    value = startTimeStr,
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    enabled = false,
+                                    modifier = Modifier.width(90.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        disabledTextColor = Color.Black,
+                                        disabledBorderColor = Color(0xFF00695C)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    singleLine = true,
+                                    textStyle = TextStyle(textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                )
+                            }
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("Aerobic", "Mixed", "Anaerobic").forEach { type ->
+                                OutlinedButton(
+                                    onClick = { sportType = type },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(0.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (sportType == type) Color(0xFF00695C) else Color.Transparent,
+                                        contentColor = if (sportType == type) Color.White else Color(0xFF00695C)
+                                    )
+                                ) { Text(type, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            }
+                        }
+
+                        Text("Actual Duration: ${duration.toInt()} min", fontSize = 14.sp)
+                        Slider(value = duration, onValueChange = { duration = it }, valueRange = 5f..120f, colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C)))
+
+                        val intString = when(intensity.toInt()) { 1 -> "Low"; 3 -> "High"; else -> "Medium" }
+                        Text("Actual Intensity: $intString", fontSize = 14.sp)
+                        Slider(value = intensity, onValueChange = { intensity = it }, valueRange = 1f..3f, steps = 1, colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C)))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(duration, intensity, sportType, startTimeStr) }, // Pass startTimeStr here
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B))
+            ) { Text(if (isEditing) "Save Updates" else "Yes, Completed", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            if (!isEditing) {
+                TextButton(onClick = { isEditing = true }) { Text("No, I need to edit", color = Color.Gray) }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
+            }
+        },
+        containerColor = Color.White, shape = RoundedCornerShape(16.dp)
+    )
 }
 // --- COMPACT COMPONENTS ---
 
@@ -356,11 +470,11 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Left: Time & Icon
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1.2f)) {
                 Text(timeString, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                 Spacer(modifier = Modifier.width(8.dp))
                 when {
-                    log.isSportModeActive || log.eventType == "SPORT" -> Icon(Icons.Default.DirectionsRun, null, tint = Color(0xFF00695C), modifier = Modifier.size(16.dp))
+                    log.eventType == "SPORT" -> Icon(Icons.Default.DirectionsRun, null, tint = if(log.status == "PLANNED") Color(0xFFFF9800) else Color(0xFF00695C), modifier = Modifier.size(16.dp))
                     log.eventType == "SMART_BOLUS" -> Icon(Icons.Default.AutoFixHigh, null, tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
                     log.carbs > 0 && log.administeredDose == 0.0 -> Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
                     log.administeredDose > 0 -> Icon(Icons.Default.Vaccines, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
@@ -368,25 +482,40 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
                 }
             }
 
-            // Middle: BG & Carbs
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1.5f)) {
-                if (log.bloodGlucose > 0) {
-                    val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
-                    Text("${log.bloodGlucose}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
-                } else {
-                    Text("-", color = Color.LightGray)
+            // --- THE DYNAMIC UI SWITCH ---
+            if (log.eventType == "SPORT") {
+                // SPORT-ONLY DESIGN
+                // Middle: Text aligned with BG columns of other cards
+                Row(modifier = Modifier.weight(1.5f)) {
+                    Text("${log.sportDuration?.toInt()}m ${log.sportType}", fontSize = 13.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
 
-                if (log.carbs > 0) {
-                    Text("${log.carbs}g", fontSize = 14.sp, color = Color.Gray)
+                // Right: Badge pushed to the end
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
+                    if (log.status == "PLANNED") {
+                        Text("Pending", fontSize = 11.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, modifier = Modifier.background(Color(0xFFFFF3E0), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                    } else {
+                        Text("Done", fontSize = 11.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold, modifier = Modifier.background(Color(0xFFE0F2F1), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
                 }
-            }
-
-            // Right: Insulin
-            if (log.administeredDose > 0) {
-                Text("${String.format(Locale.US, "%.1f", log.administeredDose)}U", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
             } else {
-                Text("-", color = Color.LightGray)
+                // STANDARD DIABETES DESIGN
+                // Middle: BG & Carbs
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1.5f)) {
+                    if (log.bloodGlucose > 0) {
+                        val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
+                        Text("${log.bloodGlucose}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
+                    } else { Text("-", color = Color.LightGray) }
+
+                    if (log.carbs > 0) { Text("${log.carbs}g", fontSize = 14.sp, color = Color.Gray) }
+                }
+
+                // Right: Insulin
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
+                    if (log.administeredDose > 0) {
+                        Text("${String.format(Locale.US, "%.1f", log.administeredDose)}U", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    } else { Text("-", color = Color.LightGray) }
+                }
             }
         }
     }
@@ -398,26 +527,47 @@ fun LogDetailsDialog(log: BolusLog, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text("Entry Details", fontWeight = FontWeight.Bold)
-        },
+        title = { Text("Entry Details", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(formatter.format(Date(log.timestamp)), fontSize = 12.sp, color = Color.Gray)
 
                 HorizontalDivider()
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Blood Glucose:", color = Color.Gray)
-                    Text(if (log.bloodGlucose > 0) "${log.bloodGlucose} mg/dL" else "None", fontWeight = FontWeight.Bold)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Carbohydrates:", color = Color.Gray)
-                    Text(if (log.carbs > 0) "${log.carbs} g" else "None", fontWeight = FontWeight.Bold)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Insulin Given:", color = Color.Gray)
-                    Text(if (log.administeredDose > 0) "${String.format(Locale.US, "%.1f", log.administeredDose)} U" else "None", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                if (log.eventType == "SPORT") {
+                    // --- SPORT ONLY MODAL DETAILS ---
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Sport Type:", color = Color.Gray)
+                        Text("${log.sportType ?: "Unknown"}", fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Duration:", color = Color.Gray)
+                        Text("${log.sportDuration?.toInt() ?: 0} mins", fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Intensity:", color = Color.Gray)
+                        Text("${log.sportIntensity ?: "Medium"}", fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Status:", color = Color.Gray)
+                        val statusColor = if (log.status == "PLANNED") Color(0xFFFF9800) else Color(0xFF00695C)
+                        val statusText = if (log.status == "PLANNED") "Pending Verification" else "Completed"
+                        Text(statusText, fontWeight = FontWeight.Bold, color = statusColor)
+                    }
+                } else {
+                    // --- STANDARD DIABETES MODAL DETAILS ---
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Blood Glucose:", color = Color.Gray)
+                        Text(if (log.bloodGlucose > 0) "${log.bloodGlucose} mg/dL" else "None", fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Carbohydrates:", color = Color.Gray)
+                        Text(if (log.carbs > 0) "${log.carbs} g" else "None", fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Insulin Given:", color = Color.Gray)
+                        Text(if (log.administeredDose > 0) "${String.format(Locale.US, "%.1f", log.administeredDose)} U" else "None", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    }
                 }
 
                 if (log.notes.isNotBlank()) {

@@ -10,6 +10,7 @@ import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
+import com.example.diabetesapp.utils.WorkoutNotificationManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,7 +34,6 @@ data class BolusInputState(
     val notes: String = "",
     val isAdvancedExpanded: Boolean = false,
 
-    // Dose Tracking
     val standardDose: Double? = null,
     val calculatedDose: Double? = null,
     val userAdjustedDose: Double? = null,
@@ -45,6 +45,11 @@ data class BolusInputState(
     val sportIntensityValue: Float = 2f,
     val sportIntensity: String = "Medium",
     val sportDurationMinutes: Float = 45f,
+
+    // NEW: Time parsing states
+    val plannedSportTime: String = "",
+    val minutesUntilSport: Float = 0f,
+
     val sportReductionLog: String = "",
 
     val bloodGlucoseError: String? = null,
@@ -59,7 +64,6 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
     private val _inputState = MutableStateFlow(BolusInputState())
     val inputState: StateFlow<BolusInputState> = _inputState.asStateFlow()
 
-    // Temporary dummy settings until we build the Profile Tab
     private val dummySettings = BolusSettings(
         icrMorning = 10f, icrNoon = 10f, icrEvening = 10f, icrNight = 10f,
         isfMorning = 50f, isfNoon = 50f, isfEvening = 50f, isfNight = 50f,
@@ -70,13 +74,54 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
 
     private fun updateCurrentDateTime() {
         val now = LocalDateTime.now()
+        val timeString = now.format(DateTimeFormatter.ofPattern("HH:mm"))
         _inputState.value = _inputState.value.copy(
-            currentTime = now.format(DateTimeFormatter.ofPattern("HH:mm")),
-            currentDate = now.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+            currentTime = timeString,
+            currentDate = now.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+            plannedSportTime = timeString // Default planned time to right now
         )
     }
 
-    // Standard UI Updaters
+    // --- NEW: Time Parsing Logic ---
+    fun updatePlannedSportTime(timeStr: String) {
+        try {
+            val formatter = DateTimeFormatter.ofPattern("HH:mm")
+            val planned = LocalTime.parse(timeStr, formatter)
+            val now = LocalTime.now()
+
+            // Calculate difference in minutes
+            var diff = java.time.Duration.between(now, planned).toMinutes()
+
+            // Handle edge case: It's 11 PM and they pick 6 AM (diff is -17 hours, but they mean tomorrow)
+            // If the time is more than 12 hours in the past, assume they mean tomorrow.
+            if (diff < -12 * 60) {
+                diff += 24 * 60
+            }
+
+            // VALIDATION: Is the calculated time still in the past?
+            if (diff < 0) {
+                _inputState.value = _inputState.value.copy(
+                    warningMessage = "Cannot plan a workout in the past. Time reset to now.",
+                    plannedSportTime = now.format(formatter),
+                    minutesUntilSport = 0f
+                )
+            } else {
+                // Valid future time
+                _inputState.value = _inputState.value.copy(
+                    plannedSportTime = timeStr,
+                    minutesUntilSport = diff.toFloat()
+                )
+            }
+        } catch (e: Exception) {
+            // Failsafe
+        }
+    }
+
+    // Add this tiny helper to dismiss the snackbar so it doesn't get stuck
+    fun clearWarningMessage() {
+        _inputState.value = _inputState.value.copy(warningMessage = null)
+    }
+
     fun setInputMode(mode: InputMode) { _inputState.value = _inputState.value.copy(inputMode = mode) }
     fun updateDate(value: String) { _inputState.value = _inputState.value.copy(currentDate = value) }
     fun updateTime(value: String) { _inputState.value = _inputState.value.copy(currentTime = value) }
@@ -94,6 +139,9 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
     fun toggleSportMode(isActive: Boolean) { _inputState.value = _inputState.value.copy(isSportModeActive = isActive) }
     fun updateSportType(type: String) { _inputState.value = _inputState.value.copy(sportType = type) }
     fun updateSportDuration(value: Float) { _inputState.value = _inputState.value.copy(sportDurationMinutes = value) }
+
+    // NEW
+    fun updateMinutesUntilSport(value: Float) { _inputState.value = _inputState.value.copy(minutesUntilSport = value) }
 
     fun updateSportIntensity(value: Float) {
         val intensityString = when (value.toInt()) { 1 -> "Low"; 2 -> "Medium"; 3 -> "High"; else -> "Medium" }
@@ -122,16 +170,13 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         performCalculation()
     }
 
-    // --- THE NEW CENTRALIZED ENGINE CALL ---
     private fun performCalculation() {
         val state = _inputState.value
-
-        // 1. Build the Patient Context
         val context = PatientContext(
-            therapyType = TherapyType.MDI_PENS, // Hardcoded until we build Settings
+            therapyType = TherapyType.MDI_PENS,
             bolusSettings = dummySettings,
             currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
-            hasCGM = false, // Hardcoded for MVP until we add UI toggle
+            hasCGM = false,
             cgmTrend = CgmTrend.NONE,
             activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
             plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
@@ -139,47 +184,78 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
             sportType = state.sportType,
             sportIntensity = state.sportIntensityValue.toInt(),
             sportDurationMins = state.sportDurationMinutes.toInt(),
-            minutesUntilSport = 0, // "Right Now"
+            minutesUntilSport = state.minutesUntilSport.toInt(), // NOW WIRED TO SLIDER
             timeOfDay = LocalTime.now()
         )
 
-        // 2. Feed it to the Engine
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
 
-        // 3. Update the UI
         _inputState.value = _inputState.value.copy(
-            standardDose = (context.plannedCarbs / dummySettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - dummySettings.targetBG) / dummySettings.getCurrentIsf()), // Just for visual comparison
+            standardDose = (context.plannedCarbs / dummySettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - dummySettings.targetBG) / dummySettings.getCurrentIsf()),
             calculatedDose = decision.suggestedInsulinDose,
             userAdjustedDose = decision.suggestedInsulinDose,
             sportReductionLog = decision.clinicalRationale,
-            warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Low BG Warning: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
+            warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
             showResult = true,
             showResultDialog = true
         )
     }
 
-    fun logEntry() {
+    fun logEntry(context: android.content.Context) {
         val state = _inputState.value
         if (state.calculatedDose == null || state.standardDose == null) return
 
-        val log = BolusLog(
-            timestamp = System.currentTimeMillis(),
-            eventType = "SMART_BOLUS",
-            bloodGlucose = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
-            carbs = state.carbs.toDoubleOrNull() ?: 0.0,
-            standardDose = state.standardDose,
-            suggestedDose = state.calculatedDose,
-            administeredDose = state.userAdjustedDose ?: state.calculatedDose,
-            isSportModeActive = state.isSportModeActive,
-            clinicalSuggestion = if (state.isSportModeActive) state.sportReductionLog else null,
-            sportType = if (state.isSportModeActive) state.sportType else null,
-            sportIntensity = if (state.isSportModeActive) state.sportIntensity else null,
-            sportDuration = if (state.isSportModeActive) state.sportDurationMinutes else null,
-            notes = state.notes
-        )
+        val now = System.currentTimeMillis()
+        val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
+        val carbs = state.carbs.toDoubleOrNull() ?: 0.0
+        val dose = state.userAdjustedDose ?: state.calculatedDose
 
         viewModelScope.launch {
-            repository.insert(log)
+            if (state.isSportModeActive) {
+                // 1. Save CURRENT state (Insulin/BG)
+                if (bg > 0 || carbs > 0 || dose > 0) {
+                    val currentLog = BolusLog(
+                        timestamp = now,
+                        eventType = "SMART_BOLUS",
+                        status = "COMPLETED",
+                        bloodGlucose = bg, carbs = carbs,
+                        standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
+                        isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
+                        notes = "Pre-workout preparation.",
+                        // FIX: The insight goes here, with the insulin!
+                        clinicalSuggestion = state.sportReductionLog
+                    )
+                    repository.insert(currentLog)
+                }
+
+                // 2. Save SPORT state
+                val sportStartTimestamp = now + (state.minutesUntilSport.toLong() * 60 * 1000L)
+                val sportLog = BolusLog(
+                    timestamp = sportStartTimestamp,
+                    eventType = "SPORT",
+                    status = "PLANNED",
+                    bloodGlucose = 0.0, carbs = 0.0, standardDose = 0.0, suggestedDose = 0.0, administeredDose = 0.0,
+                    isSportModeActive = true,
+                    sportType = state.sportType, sportIntensity = state.sportIntensity, sportDuration = state.sportDurationMinutes,
+                    // FIX: Only put the insight here if they didn't take any insulin/carbs
+                    clinicalSuggestion = if (bg == 0.0 && carbs == 0.0 && dose == 0.0) state.sportReductionLog else null,
+                    notes = state.notes
+                )
+                repository.insert(sportLog)
+
+                val notificationTime = sportStartTimestamp + (state.sportDurationMinutes.toLong() * 60 * 1000L)
+                WorkoutNotificationManager.scheduleNotification(context, notificationTime)
+
+            } else {
+                // Normal immediate log
+                val log = BolusLog(
+                    timestamp = now, eventType = "SMART_BOLUS", status = "COMPLETED",
+                    bloodGlucose = bg, carbs = carbs, standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
+                    isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
+                    clinicalSuggestion = state.sportReductionLog, notes = state.notes
+                )
+                repository.insert(log)
+            }
             resetForm()
         }
     }
@@ -194,7 +270,6 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         )
     }
 }
-
 class CalculateBolusViewModelFactory(private val repository: BolusLogRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CalculateBolusViewModel::class.java)) {

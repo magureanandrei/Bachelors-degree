@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import com.example.diabetesapp.data.dao.BolusLogDao
 import com.example.diabetesapp.data.models.BolusLog
 
-@Database(entities = [BolusLog::class], version = 1, exportSchema = false)
+@Database(entities = [BolusLog::class], version = 2, exportSchema = false) // Version 2
 abstract class BolusDatabase : RoomDatabase() {
 
     abstract fun bolusLogDao(): BolusLogDao
@@ -22,11 +22,12 @@ abstract class BolusDatabase : RoomDatabase() {
                     context.applicationContext,
                     BolusDatabase::class.java,
                     "bolus_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration() // Wipes old DB to apply the new schema safely
+                    .build()
                 INSTANCE = instance
                 instance
             }
         }
     }
 }
-

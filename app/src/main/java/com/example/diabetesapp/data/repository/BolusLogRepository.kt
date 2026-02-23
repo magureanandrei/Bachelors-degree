@@ -16,4 +16,12 @@ class BolusLogRepository(private val bolusLogDao: BolusLogDao) {
     suspend fun deleteAll() {
         bolusLogDao.deleteAll()
     }
+
+    suspend fun update(bolusLog: BolusLog) {
+        bolusLogDao.update(bolusLog)
+    }
+
+    suspend fun delete(bolusLog: BolusLog) {
+        bolusLogDao.delete(bolusLog)
+    }
 }

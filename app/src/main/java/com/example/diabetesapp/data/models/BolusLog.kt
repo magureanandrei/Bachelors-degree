@@ -7,8 +7,11 @@ import androidx.room.PrimaryKey
 data class BolusLog(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-    val timestamp: Long, // This will now represent the actual event time
+    val timestamp: Long,
     val eventType: String,
+
+    // NEW: Track if this is a planned future event or a completed past event
+    val status: String = "COMPLETED",
 
     val bloodGlucose: Double,
     val carbs: Double,
@@ -22,6 +25,5 @@ data class BolusLog(
     val sportDuration: Float?,
     val notes: String,
 
-    // NEW: Save the exact suggestion the app gave the user!
     val clinicalSuggestion: String?
 )

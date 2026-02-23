@@ -1,8 +1,10 @@
 package com.example.diabetesapp.data.dao
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Update
 import com.example.diabetesapp.data.models.BolusLog
 import kotlinx.coroutines.flow.Flow
 
@@ -17,5 +19,12 @@ interface BolusLogDao {
 
     @Query("DELETE FROM bolus_log")
     suspend fun deleteAll()
+
+    @Update
+    suspend fun update(bolusLog: BolusLog)
+
+    @Delete
+    suspend fun delete(bolusLog: BolusLog)
+
 }
 
