@@ -1,7 +1,8 @@
 package com.example.diabetesapp.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
@@ -57,8 +59,27 @@ fun LogReadingScreen(
     }
 
     LaunchedEffect(uiState.errorMessage) {
-        uiState.errorMessage?.let { snackbarHostState.showSnackbar(it) }
+        uiState.errorMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            // Optional: clear error in ViewModel if needed
+        }
     }
+
+    // --- NATIVE TIME PICKER SETUP ---
+    val timeParts = uiState.eventTime.split(":")
+    val initialHour = timeParts.getOrNull(0)?.toIntOrNull() ?: 12
+    val initialMinute = timeParts.getOrNull(1)?.toIntOrNull() ?: 0
+
+    val timePickerDialog = android.app.TimePickerDialog(
+        context,
+        { _, selectedHour, selectedMinute ->
+            val formattedTime = String.format(java.util.Locale.getDefault(), "%02d:%02d", selectedHour, selectedMinute)
+            viewModel.updateTime(formattedTime)
+        },
+        initialHour,
+        initialMinute,
+        true // 24-hour clock
+    )
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -82,89 +103,75 @@ fun LogReadingScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Time & Date Fields
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = uiState.eventTime,
-                    onValueChange = { viewModel.updateTime(it) },
-                    label = { Text("Time") },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, focusedContainerColor = Color.White)
-                )
-                OutlinedTextField(
-                    value = uiState.eventDate,
-                    onValueChange = { viewModel.updateDate(it) },
-                    label = { Text("Date") },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, focusedContainerColor = Color.White)
-                )
+
+            // 1. SEGMENTED TAB TOGGLE
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFE0E0E0), RoundedCornerShape(12.dp))
+                    .padding(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(if (!uiState.isSportModeActive) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                        .clickable { viewModel.toggleSportMode(false) }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Diet & Insulin", fontWeight = FontWeight.Bold, color = if (!uiState.isSportModeActive) Color(0xFF1976D2) else Color.Gray)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(if (uiState.isSportModeActive) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                        .clickable { viewModel.toggleSportMode(true) }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Past Sport", fontWeight = FontWeight.Bold, color = if (uiState.isSportModeActive) Color(0xFF00695C) else Color.Gray)
+                }
             }
 
+            // 2. TIME PICKER CARD (Replaces the text fields)
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable { timePickerDialog.show() },
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LargeInputField(
-                        label = "Blood Glucose", value = uiState.bloodGlucose,
-                        onValueChange = { viewModel.updateBloodGlucose(it) },
-                        unit = "mg/dL", placeholder = "0"
-                    )
-                    LargeInputField(
-                        label = "Carbohydrates", value = uiState.carbs,
-                        onValueChange = { viewModel.updateCarbs(it) },
-                        unit = "g", placeholder = "0"
-                    )
-                    LargeInputField(
-                        label = "Insulin Dose", value = uiState.manualInsulin,
-                        onValueChange = { viewModel.updateManualInsulin(it) },
-                        unit = "U", placeholder = "0.0"
-                    )
-                    StandardInputField(
-                        label = "Notes / Tags", value = uiState.notes,
-                        onValueChange = { viewModel.updateNotes(it) },
-                        unit = "", helperText = "e.g., 'Felt low', 'Ate pizza'"
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color.Gray)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Time of Event", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Text(
+                        text = uiState.eventTime,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if(uiState.isSportModeActive) Color(0xFF00695C) else Color(0xFF1976D2)
                     )
                 }
             }
 
-            // SPORT MODE SECTION
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (uiState.isSportModeActive) Color(0xFFE0F2F1) else Color(0xFFF5F5F5)
-                ),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
+            // 3. DYNAMIC INPUT AREA (Crossfade animates the swap smoothly)
+            Crossfade(targetState = uiState.isSportModeActive, label = "Log Mode") { isSport ->
+                if (isSport) {
+                    // --- SPORT UI ---
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
-                        Text("Log Sport/Exercise", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00695C))
-                        Switch(
-                            checked = uiState.isSportModeActive,
-                            onCheckedChange = { viewModel.toggleSportMode(it) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF00695C))
-                        )
-                    }
-
-                    AnimatedVisibility(visible = uiState.isSportModeActive) {
-                        Column(
-                            modifier = Modifier.padding(top = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Sport Type", fontSize = 14.sp, color = Color.Gray)
+                                Text("Sport Type", fontSize = 14.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
                                 IconButton(onClick = { showSportInfoDialog = true }, modifier = Modifier.size(24.dp).padding(start = 4.dp)) {
                                     Icon(Icons.Default.Info, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
                                 }
@@ -187,13 +194,7 @@ fun LogReadingScreen(
                                 }
                             }
 
-                            Text("Intensity: ${uiState.sportIntensity}", fontSize = 14.sp, color = Color.Gray)
-                            Slider(
-                                value = uiState.sportIntensityValue,
-                                onValueChange = { viewModel.updateSportIntensity(it) },
-                                valueRange = 1f..3f, steps = 1,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C))
-                            )
+                            HorizontalDivider(color = Color(0xFFF5F5F5))
 
                             Text("Duration: ${uiState.sportDurationMinutes.toInt()} min", fontSize = 14.sp, color = Color.Gray)
                             Slider(
@@ -202,16 +203,56 @@ fun LogReadingScreen(
                                 valueRange = 15f..120f,
                                 colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C))
                             )
+
+                            Text("Intensity: ${uiState.sportIntensity}", fontSize = 14.sp, color = Color.Gray)
+                            Slider(
+                                value = uiState.sportIntensityValue,
+                                onValueChange = { viewModel.updateSportIntensity(it) },
+                                valueRange = 1f..3f, steps = 1,
+                                colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C))
+                            )
+                        }
+                    }
+                } else {
+                    // --- DIABETES DATA UI ---
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            LargeInputField(label = "Blood Glucose", value = uiState.bloodGlucose, onValueChange = { viewModel.updateBloodGlucose(it) }, unit = "mg/dL", placeholder = "0")
+                            LargeInputField(label = "Carbohydrates", value = uiState.carbs, onValueChange = { viewModel.updateCarbs(it) }, unit = "g", placeholder = "0")
+                            LargeInputField(label = "Insulin Dose", value = uiState.manualInsulin, onValueChange = { viewModel.updateManualInsulin(it) }, unit = "U", placeholder = "0.0")
                         }
                     }
                 }
             }
 
-            // CRITICAL CHANGE: Changed button text and action
+            // Notes and Action Button stay at the bottom for both modes
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    StandardInputField(
+                        label = "Notes / Tags", value = uiState.notes,
+                        onValueChange = { viewModel.updateNotes(it) },
+                        unit = "", helperText = "e.g., 'Felt low', 'Morning run'"
+                    )
+                }
+            }
+
             Button(
                 onClick = { viewModel.analyzeLog() },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+                colors = ButtonDefaults.buttonColors(containerColor = if(uiState.isSportModeActive) Color(0xFF00695C) else Color(0xFF1976D2)),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text("Analyze & Log", fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -219,10 +260,8 @@ fun LogReadingScreen(
         }
     }
 
-    // --- THE UNIFIED INSIGHT DIALOG ---
+    // --- THE UNIFIED INSIGHT DIALOG (Unchanged) ---
     uiState.currentInsight?.let { insight ->
-
-        // Dynamic styling based on the insight type
         val (icon, color, bgColor) = when (insight.type) {
             InsightType.ON_TRACK -> Triple(Icons.Default.CheckCircle, Color(0xFF2E7D32), Color(0xFFE8F5E9))
             InsightType.WARNING -> Triple(Icons.Default.Warning, Color(0xFFD32F2F), Color(0xFFFFEBEE))
@@ -272,7 +311,7 @@ fun LogReadingScreen(
         )
     }
 
-    // (Info Dialog for Sport Types remains the same)
+    // --- INFO DIALOG (Unchanged) ---
     if (showSportInfoDialog) {
         AlertDialog(
             onDismissRequest = { showSportInfoDialog = false },
@@ -291,7 +330,7 @@ fun LogReadingScreen(
     }
 }
 
-// ... LargeInputField and StandardInputField remain exactly the same
+// Helper Composables remain untouched below
 @Composable
 fun LargeInputField(label: String, value: String, onValueChange: (String) -> Unit, unit: String, placeholder: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -302,6 +341,7 @@ fun LargeInputField(label: String, value: String, onValueChange: (String) -> Uni
         }
     }
 }
+
 @Composable
 fun StandardInputField(label: String, value: String, onValueChange: (String) -> Unit, unit: String, helperText: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

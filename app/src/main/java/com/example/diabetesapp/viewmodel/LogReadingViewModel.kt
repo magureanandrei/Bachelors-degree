@@ -14,36 +14,30 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.time.Duration
+import java.util.Calendar
 
 enum class InsightType { ON_TRACK, SUGGESTION, WARNING }
 
-data class LogInsight(
-    val type: InsightType,
-    val title: String,
-    val message: String
-)
+data class LogInsight(val type: InsightType, val title: String, val message: String)
 
 data class LogReadingState(
-    val eventDate: String = "",
+    // REMOVED eventDate! Just keeping the time.
     val eventTime: String = "",
     val bloodGlucose: String = "",
     val carbs: String = "",
     val manualInsulin: String = "",
     val notes: String = "",
 
+    // This now acts as the UI Toggle (False = Diet/Insulin, True = Sport)
     val isSportModeActive: Boolean = false,
     val sportType: String = "Aerobic",
     val sportIntensityValue: Float = 2f,
     val sportIntensity: String = "Medium",
     val sportDurationMinutes: Float = 45f,
 
-    // The Unified Insight State
     val currentInsight: LogInsight? = null,
-
     val isSaved: Boolean = false,
     val errorMessage: String? = null,
     val pendingClinicalSuggestion: String? = null
@@ -61,32 +55,51 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 
     init { resetState() }
 
-    fun updateDate(value: String) { _uiState.value = _uiState.value.copy(eventDate = value) }
     fun updateTime(value: String) { _uiState.value = _uiState.value.copy(eventTime = value) }
     fun updateBloodGlucose(value: String) { _uiState.value = _uiState.value.copy(bloodGlucose = value, errorMessage = null) }
     fun updateCarbs(value: String) { _uiState.value = _uiState.value.copy(carbs = value, errorMessage = null) }
     fun updateManualInsulin(value: String) { _uiState.value = _uiState.value.copy(manualInsulin = value, errorMessage = null) }
     fun updateNotes(value: String) { _uiState.value = _uiState.value.copy(notes = value) }
+
+    // Toggle between Diet and Sport Mode
     fun toggleSportMode(isActive: Boolean) { _uiState.value = _uiState.value.copy(isSportModeActive = isActive, errorMessage = null) }
+
     fun updateSportType(type: String) { _uiState.value = _uiState.value.copy(sportType = type) }
     fun updateSportDuration(value: Float) { _uiState.value = _uiState.value.copy(sportDurationMinutes = value) }
-
     fun updateSportIntensity(value: Float) {
-        val intensityString = when (value.toInt()) { 1 -> "Low"; 2 -> "Medium"; 3 -> "High"; else -> "Medium" }
+        val intensityString = when (value.toInt()) { 1 -> "Low"; 3 -> "High"; else -> "Medium" }
         _uiState.value = _uiState.value.copy(sportIntensityValue = value, sportIntensity = intensityString)
     }
 
     fun dismissInsightDialog() { _uiState.value = _uiState.value.copy(currentInsight = null) }
 
     fun resetState() {
-        val now = LocalDateTime.now()
+        val now = LocalTime.now()
         _uiState.value = LogReadingState(
-            eventDate = now.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
             eventTime = now.format(DateTimeFormatter.ofPattern("HH:mm"))
         )
     }
 
-    // --- THE NEW UNIFIED ANALYZE FLOW ---
+    // Helper to get exact timestamp from "HH:mm"
+    private fun getParsedTimestamp(timeStr: String): Long {
+        val calendar = Calendar.getInstance()
+        try {
+            val parts = timeStr.split(":")
+            if (parts.size == 2) {
+                val hour = parts[0].toInt()
+                val min = parts[1].toInt()
+                // If entered time is > 2 hours in the future, assume it meant yesterday!
+                if (hour > calendar.get(Calendar.HOUR_OF_DAY) + 2) {
+                    calendar.add(Calendar.DAY_OF_YEAR, -1)
+                }
+                calendar.set(Calendar.HOUR_OF_DAY, hour)
+                calendar.set(Calendar.MINUTE, min)
+                calendar.set(Calendar.SECOND, 0)
+            }
+        } catch (e: Exception) { /* Fallback to now */ }
+        return calendar.timeInMillis
+    }
+
     fun analyzeLog() {
         val state = _uiState.value
         val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
@@ -94,17 +107,12 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
         val insulin = state.manualInsulin.toDoubleOrNull() ?: 0.0
 
         if (bg == 0.0 && carbs == 0.0 && insulin == 0.0 && !state.isSportModeActive) {
-            _uiState.value = _uiState.value.copy(errorMessage = "Please enter data or enable Sport Mode.")
+            _uiState.value = _uiState.value.copy(errorMessage = "Please enter data or switch to Sport Mode.")
             return
         }
 
-        // Calculate time offset based on the user's selected Time/Date
-        val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-        val eventDateTimeString = "${state.eventDate} ${state.eventTime}"
-        val eventDateTime = try { LocalDateTime.parse(eventDateTimeString, formatter) } catch (e: Exception) { LocalDateTime.now() }
-
-        // Positive = Future, Negative = Past
-        val minutesDiff = Duration.between(LocalDateTime.now(), eventDateTime).toMinutes().toInt()
+        // We assume retrospective logs are always <= 0 minutes from now
+        val minutesDiff = 0
 
         val context = PatientContext(
             therapyType = TherapyType.MDI_PENS,
@@ -124,64 +132,13 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
 
-        // Generate the appropriate Insight based on the Algorithm's output
+        // Generating insights logic remains largely the same...
         val insight = when {
-            // 1. Critical Carb Warning
-            decision.suggestedRescueCarbs > 0 && carbs < decision.suggestedRescueCarbs -> {
-                LogInsight(
-                    type = InsightType.WARNING,
-                    title = "Action Required",
-                    message = decision.clinicalRationale.ifBlank { "You need ${decision.suggestedRescueCarbs}g of fast-acting carbs to prevent a low." }
-                )
-            }
-            // 2. Late-Onset Warning for past sports
-            state.isSportModeActive && minutesDiff <= 0 && decision.clinicalRationale.contains("Late-Onset") -> {
-                LogInsight(
-                    type = InsightType.WARNING,
-                    title = "Post-Sport Alert",
-                    message = decision.clinicalRationale
-                )
-            }
-            // 3. Pre-Sport Strategy (Future event)
-            state.isSportModeActive && minutesDiff > 0 -> {
-                LogInsight(
-                    type = InsightType.SUGGESTION,
-                    title = "Pre-Sport Strategy",
-                    message = decision.clinicalRationale.ifBlank { "You are clear to start your ${state.sportType} workout in $minutesDiff minutes. Monitor BG closely." }
-                )
-            }
-            // 4. Missed Insulin Suggestion
-            decision.suggestedInsulinDose > 0.5 && insulin == 0.0 -> {
-                LogInsight(
-                    type = InsightType.SUGGESTION,
-                    title = "Insulin Recommended",
-                    message = "The algorithm suggests ${decision.suggestedInsulinDose}U to cover this entry. Consider adjusting your log if you haven't taken insulin."
-                )
-            }
-            // 5. General Rationale present
-            decision.clinicalRationale.isNotBlank() && state.isSportModeActive -> {
-                LogInsight(
-                    type = InsightType.SUGGESTION,
-                    title = "Sport Insight",
-                    message = decision.clinicalRationale
-                )
-            }
-            // 6. ALL CLEAR / ON TRACK
-            else -> {
-                val statusMessage = if (bg in 70.0..180.0) {
-                    "Your blood glucose is in range. Great job keeping it steady!"
-                } else if (bg > 180.0 && insulin > 0.0) {
-                    "Correction dose noted. Drink water and monitor for the next 2 hours."
-                } else {
-                    "Log looks good. Everything is on track."
-                }
-
-                LogInsight(
-                    type = InsightType.ON_TRACK,
-                    title = "Looking Good!",
-                    message = statusMessage
-                )
-            }
+            decision.suggestedRescueCarbs > 0 && carbs < decision.suggestedRescueCarbs -> LogInsight(InsightType.WARNING, "Action Required", decision.clinicalRationale.ifBlank { "You need fast-acting carbs to prevent a low." })
+            state.isSportModeActive && decision.clinicalRationale.contains("Late-Onset") -> LogInsight(InsightType.WARNING, "Post-Sport Alert", decision.clinicalRationale)
+            decision.suggestedInsulinDose > 0.5 && insulin == 0.0 -> LogInsight(InsightType.SUGGESTION, "Insulin Recommended", "The algorithm suggests ${decision.suggestedInsulinDose}U. Consider adjusting your log if you took insulin.")
+            decision.clinicalRationale.isNotBlank() -> LogInsight(InsightType.SUGGESTION, "Insight", decision.clinicalRationale)
+            else -> LogInsight(InsightType.ON_TRACK, "Looking Good!", "Everything is perfectly on track.")
         }
 
         _uiState.value = _uiState.value.copy(
@@ -192,48 +149,53 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 
     fun executeSave() {
         val state = _uiState.value
-        val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
-        val carbs = state.carbs.toDoubleOrNull() ?: 0.0
-        val insulin = state.manualInsulin.toDoubleOrNull() ?: 0.0
-
-        val eventType = when {
-            state.isSportModeActive -> "SPORT"
-            insulin > 0.0 && carbs == 0.0 -> "MANUAL_INSULIN"
-            carbs > 0.0 && insulin == 0.0 -> "MEAL"
-            bg > 0.0 && carbs == 0.0 && insulin == 0.0 -> "BG_CHECK"
-            else -> "MIXED_LOG"
-        }
-
-        val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-        val timestamp = try {
-            val dateTime = LocalDateTime.parse("${state.eventDate} ${state.eventTime}", formatter)
-            dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        } catch (e: Exception) { System.currentTimeMillis() }
-
-        val log = BolusLog(
-            timestamp = timestamp,
-            eventType = eventType,
-            bloodGlucose = bg,
-            carbs = carbs,
-            standardDose = 0.0,
-            suggestedDose = 0.0,
-            administeredDose = insulin,
-            isSportModeActive = state.isSportModeActive,
-            sportType = if (state.isSportModeActive) state.sportType else null,
-            sportIntensity = if (state.isSportModeActive) state.sportIntensity else null,
-            sportDuration = if (state.isSportModeActive) state.sportDurationMinutes else null,
-            notes = state.notes.ifBlank { if (state.isSportModeActive) "Workout logged" else "Manual Log" },
-            clinicalSuggestion = state.pendingClinicalSuggestion
-        )
+        val timestamp = getParsedTimestamp(state.eventTime)
 
         viewModelScope.launch {
-            repository.insert(log)
+            if (state.isSportModeActive) {
+                // SAVE SPORT ONLY
+                val sportLog = BolusLog(
+                    timestamp = timestamp,
+                    eventType = "SPORT",
+                    status = "COMPLETED", // Retrospective is always completed
+                    bloodGlucose = 0.0, carbs = 0.0, standardDose = 0.0, suggestedDose = 0.0, administeredDose = 0.0,
+                    isSportModeActive = true,
+                    sportType = state.sportType,
+                    sportIntensity = state.sportIntensity,
+                    sportDuration = state.sportDurationMinutes,
+                    notes = state.notes.ifBlank { "Retrospective workout logged" },
+                    clinicalSuggestion = state.pendingClinicalSuggestion
+                )
+                repository.insert(sportLog)
+            } else {
+                // SAVE DIABETES LOG ONLY
+                val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
+                val carbs = state.carbs.toDoubleOrNull() ?: 0.0
+                val insulin = state.manualInsulin.toDoubleOrNull() ?: 0.0
+
+                val eventType = when {
+                    bg > 0 && carbs == 0.0 && insulin == 0.0 -> "BG_CHECK"
+                    carbs > 0 && insulin == 0.0 -> "MEAL"
+                    else -> "MANUAL_INSULIN"
+                }
+
+                val log = BolusLog(
+                    timestamp = timestamp,
+                    eventType = eventType,
+                    status = "COMPLETED",
+                    bloodGlucose = bg, carbs = carbs, standardDose = insulin, suggestedDose = 0.0, administeredDose = insulin,
+                    isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
+                    notes = state.notes.ifBlank { "Manual Log" },
+                    clinicalSuggestion = state.pendingClinicalSuggestion
+                )
+                repository.insert(log)
+            }
+
             resetState()
             _uiState.value = _uiState.value.copy(isSaved = true, currentInsight = null)
         }
     }
 }
-// Keep Factory class as is...
 class LogReadingViewModelFactory(private val repository: BolusLogRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LogReadingViewModel::class.java)) {
