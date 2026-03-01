@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.repository.BolusLogRepository
+import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import java.util.Locale
@@ -28,8 +29,13 @@ fun StatsScreen(
 ) {
     val context = LocalContext.current
     val database = remember { BolusDatabase.getDatabase(context) }
-    val repository = remember { BolusLogRepository(database.bolusLogDao()) }
-    val viewModel: DashboardViewModel = viewModel(factory = DashboardViewModelFactory(repository))
+    val logRepository = remember { BolusLogRepository(database.bolusLogDao()) }
+    val settingsRepository = remember { BolusSettingsRepository(context) }
+
+    // 2. Pass both to the factory
+    val viewModel: DashboardViewModel = viewModel(
+        factory = DashboardViewModelFactory(logRepository, settingsRepository)
+    )
 
     val logs by viewModel.allLogs.collectAsState()
 

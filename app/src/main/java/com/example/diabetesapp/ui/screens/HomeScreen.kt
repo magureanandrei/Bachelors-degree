@@ -43,7 +43,10 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.text.style.TextOverflow
+import com.example.diabetesapp.data.repository.BolusSettingsRepository
 
 @Composable
 fun HomeScreen(
@@ -53,20 +56,36 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val database = remember { BolusDatabase.getDatabase(context) }
-    val repository = remember { BolusLogRepository(database.bolusLogDao()) }
-    val viewModel: DashboardViewModel = viewModel(factory = DashboardViewModelFactory(repository))
+    val logRepository = remember { BolusLogRepository(database.bolusLogDao()) }
+    // Ensure this repository is the one that reads/writes your High/Low/Target
+    val settingsRepository = remember { com.example.diabetesapp.data.repository.BolusSettingsRepository(context) }
+
+    val viewModel: DashboardViewModel = viewModel(
+        factory = DashboardViewModelFactory(logRepository, settingsRepository)
+    )
 
     val allLogs by viewModel.allLogs.collectAsState()
+    val settings by viewModel.settings.collectAsState()
 
-    // 1. NEW: Collect the pending workout state
+    // Re-calculate day start when logs change
+    val logicalDayStart = remember(allLogs) { getLogicalDayStartTimestamp() }
+    val todaysLogs = allLogs.filter { it.timestamp >= logicalDayStart }.sortedBy { it.timestamp }
+
+    key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
+        TimeScaledBgGraph(
+            logs = todaysLogs,
+            dayStartTimestamp = logicalDayStart,
+            targetBg = settings.targetBG,
+            hypoLimit = settings.hypoLimit,
+            hyperLimit = settings.hyperLimit,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
 
-    val logicalDayStart = remember { getLogicalDayStartTimestamp() }
-    val todaysLogs = allLogs.filter { it.timestamp >= logicalDayStart }.sortedBy { it.timestamp }
 
     var selectedLogForModal by remember { mutableStateOf<BolusLog?>(null) }
 
-    // 2. NEW: Check for pending workouts every time logs update
     LaunchedEffect(allLogs) {
         viewModel.checkForPendingWorkouts(allLogs)
     }
@@ -79,12 +98,10 @@ fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // ... Header, Disclaimer, and Action Buttons stay the same ...
         HeaderSection()
         DisclaimerBanner()
-        DashboardActionButtons(
-            onSmartBolusClick = onNavigateToCalculateBolus,
-            onManualLogClick = onNavigateToLogReading
-        )
+        DashboardActionButtons(onSmartBolusClick = onNavigateToCalculateBolus, onManualLogClick = onNavigateToLogReading)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -95,17 +112,18 @@ fun HomeScreen(
                 Text("Today's Glucose Trends", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // We remove the if/else entirely.
-                // We ALWAYS show the graph so the grid and target lines are visible.
-                Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
-                    TimeScaledBgGraph(
-                        logs = todaysLogs,
-                        dayStartTimestamp = logicalDayStart,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // Optional: Overlay a subtle "No Data" hint if empty
-                    // so the user knows why there are no dots
+                // The 'key' ensures that if Target/High/Low change, the Canvas RE-DRAWS immediately
+                key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+                        TimeScaledBgGraph(
+                            logs = todaysLogs,
+                            dayStartTimestamp = logicalDayStart,
+                            targetBg = settings.targetBG,
+                            hypoLimit = settings.hypoLimit,
+                            hyperLimit = settings.hyperLimit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
         }
@@ -133,7 +151,6 @@ fun HomeScreen(
         LogDetailsDialog(log = log, onDismiss = { selectedLogForModal = null })
     }
 
-    // 3. NEW: The Verification Prompt Dialog
     unverifiedWorkout?.let { workout ->
         PostWorkoutVerificationDialog(
             log = workout,
@@ -146,12 +163,20 @@ fun HomeScreen(
 }
 // Logical Day Start (3 AM Cutoff)
 fun getLogicalDayStartTimestamp(): Long {
+    // Uses the phone's LOCAL timezone settings
     val calendar = Calendar.getInstance()
-    if (calendar.get(Calendar.HOUR_OF_DAY) < 3) calendar.add(Calendar.DAY_OF_YEAR, -1)
+
+    // If current time is between Midnight and 3 AM,
+    // we want the graph to start at 3 AM of the PREVIOUS day.
+    if (calendar.get(Calendar.HOUR_OF_DAY) < 3) {
+        calendar.add(Calendar.DAY_OF_YEAR, -1)
+    }
+
     calendar.set(Calendar.HOUR_OF_DAY, 3)
     calendar.set(Calendar.MINUTE, 0)
     calendar.set(Calendar.SECOND, 0)
     calendar.set(Calendar.MILLISECOND, 0)
+
     return calendar.timeInMillis
 }
 
@@ -159,6 +184,9 @@ fun getLogicalDayStartTimestamp(): Long {
 fun TimeScaledBgGraph(
     logs: List<BolusLog>,
     dayStartTimestamp: Long,
+    targetBg: Float = 100f,
+    hypoLimit: Float = 70f,
+    hyperLimit: Float = 180f,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -169,6 +197,7 @@ fun TimeScaledBgGraph(
     val mealPainter = rememberVectorPainter(Icons.Default.Restaurant)
     val manualInsulinPainter = rememberVectorPainter(Icons.Default.Vaccines)
 
+    // Auto-scroll to current time on load
     LaunchedEffect(scrollState.maxValue) {
         if (scrollState.maxValue > 0) {
             val twentyFourHoursMs = 24 * 60 * 60 * 1000f
@@ -183,11 +212,10 @@ fun TimeScaledBgGraph(
         }
     }
 
+    // Y-Axis Scale
     val minBg = 40f
     val maxBg = 350f
     val rangeBg = maxBg - minBg
-
-    // Adjusted padding for 2 lanes + X-Axis
     val topPadding = 40f
     val bottomPadding = 120f
 
@@ -197,21 +225,24 @@ fun TimeScaledBgGraph(
             val graphHeight = size.height - bottomPadding - topPadding
             fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
 
-            // BG Labels
-            val yLabels = listOf(70f, 180f, 300f)
+            // BG Labels based on Safety Limits
+            val yLabels = listOf(hypoLimit, targetBg, hyperLimit, 300f)
             yLabels.forEach { bg ->
                 drawText(
                     textMeasurer = textMeasurer,
                     text = "${bg.toInt()}",
-                    style = TextStyle(color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Medium),
-                    topLeft = Offset(0f, bgToY(bg) - 20f)
+                    style = TextStyle(
+                        color = if (bg == targetBg) Color(0xFF00897B) else Color.Gray,
+                        fontSize = 10.sp,
+                        fontWeight = if (bg == targetBg) FontWeight.Bold else FontWeight.Medium
+                    ),
+                    topLeft = Offset(0f, bgToY(bg) - 15f)
                 )
             }
 
-            // Swimlane Labels (Centered in their respective 40f-high lanes)
+            // Swimlane Labels
             val carbsY = size.height - 100f
             val insulinY = size.height - 60f
-
             drawText(textMeasurer = textMeasurer, text = "Carbs", style = TextStyle(color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold), topLeft = Offset(0f, carbsY - 15f))
             drawText(textMeasurer = textMeasurer, text = "Ins", style = TextStyle(color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold), topLeft = Offset(0f, insulinY - 15f))
         }
@@ -226,97 +257,111 @@ fun TimeScaledBgGraph(
                 fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
                 fun timeToX(timestamp: Long): Float = ((timestamp - dayStartTimestamp).coerceIn(0, twentyFourHoursMs.toLong()) / twentyFourHoursMs) * graphWidth
 
-                // Swimlane Y-Coordinates (Perfectly centered in their tracks)
                 val carbsY = size.height - 100f
                 val insulinY = size.height - 60f
 
-                // 1. Target Range
-                drawRoundRect(color = Color(0xFFE8F5E9), topLeft = Offset(0f, bgToY(180f)), size = Size(graphWidth, bgToY(70f) - bgToY(180f)), cornerRadius = CornerRadius(4f, 4f))
-                listOf(70f, 180f, 300f).forEach { bg -> drawLine(if (bg == 70f || bg == 180f) Color(0xFFA5D6A7) else Color(0xFFEEEEEE), Offset(0f, bgToY(bg)), Offset(graphWidth, bgToY(bg)), if (bg == 70f || bg == 180f) 2f else 1f) }
+                // 1. DYNAMIC TARGET RANGE SHADING
+                drawRect(
+                    color = Color(0xFFE8F5E9).copy(alpha = 0.7f),
+                    topLeft = Offset(0f, bgToY(hyperLimit)),
+                    size = Size(graphWidth, bgToY(hypoLimit) - bgToY(hyperLimit))
+                )
 
-                // 2. Draw Swimlane Dividers (Spacing them 40px apart)
-                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 120f), Offset(graphWidth, size.height - 120f), 2f) // Top of Carbs
-                drawLine(Color(0xFFF5F5F5), Offset(0f, size.height - 80f), Offset(graphWidth, size.height - 80f), 1f)   // Divider between Carbs/Insulin
-                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 40f), Offset(graphWidth, size.height - 40f), 2f) // Bottom of Insulin (Top of Time Axis)
+                // 2. SAFETY HORIZONTAL LINES
+                listOf(hypoLimit, targetBg, hyperLimit).forEach { bg ->
+                    val isTarget = bg == targetBg
+                    val color = when (bg) {
+                        hypoLimit -> Color(0xFFE53935).copy(alpha = 0.4f)
+                        hyperLimit -> Color(0xFFFFB74D).copy(alpha = 0.4f)
+                        else -> Color(0xFFA5D6A7)
+                    }
 
-                // 3. DRAW SPORT DURATIONS (Shaded Rectangles)
+                    drawLine(
+                        color = color,
+                        start = Offset(0f, bgToY(bg)),
+                        end = Offset(graphWidth, bgToY(bg)),
+                        strokeWidth = if (isTarget) 3f else 2f,
+                        pathEffect = if (!isTarget) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+                    )
+                }
+
+                // 3. SWIMLANE DIVIDERS
+                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 120f), Offset(graphWidth, size.height - 120f), 2f)
+                drawLine(Color(0xFFF5F5F5), Offset(0f, size.height - 80f), Offset(graphWidth, size.height - 80f), 1f)
+                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 40f), Offset(graphWidth, size.height - 40f), 2f)
+
+                // 4. SPORT DURATIONS
                 logs.filter { it.isSportModeActive && it.sportDuration != null }.forEach { sportLog ->
                     val startX = timeToX(sportLog.timestamp)
                     val endX = timeToX(sportLog.timestamp + (sportLog.sportDuration!!.toLong() * 60 * 1000L))
                     val isPlanned = sportLog.status == "PLANNED"
-
                     val shadeColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f) else Color(0xFF00695C).copy(alpha = 0.15f)
 
-                    // Box exactly matches graphHeight so it doesn't bleed into the swimlanes
                     drawRect(color = shadeColor, topLeft = Offset(startX, topPadding), size = Size(endX - startX, graphHeight))
 
                     val borderColor = if (isPlanned) Color(0xFFFF9800) else Color(0xFF00695C)
                     val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
 
-                    drawLine(color = borderColor, start = Offset(startX, topPadding), end = Offset(startX, topPadding + graphHeight), strokeWidth = 3f, pathEffect = pathEffect)
-                    drawLine(color = borderColor, start = Offset(endX, topPadding), end = Offset(endX, topPadding + graphHeight), strokeWidth = 3f, pathEffect = pathEffect)
+                    drawLine(borderColor, Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
+                    drawLine(borderColor, Offset(endX, topPadding), Offset(endX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
                 }
 
-                // 4. X-Axis Time Labels (Bottom track)
-                val xLabels = listOf(0, 3, 6, 9, 12, 15, 18, 21, 24)
+                // 5. X-AXIS TIME LABELS
                 val hourStrings = listOf("3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM", "12 AM", "3 AM")
-                xLabels.forEachIndexed { index, hoursElapsed ->
-                    val xPos = timeToX(dayStartTimestamp + (hoursElapsed * 60 * 60 * 1000L))
-                    // Vertical grid line matching the labels
+                for (i in 0..8) {
+                    // Multiplies i by 3 hours to match the labels above
+                    val xPos = timeToX(dayStartTimestamp + (i * 3 * 60 * 60 * 1000L))
+
                     drawLine(Color(0xFFF5F5F5), Offset(xPos, topPadding), Offset(xPos, size.height - 40f), 1f)
-                    // Tick mark
-                    drawLine(Color.LightGray, Offset(xPos, size.height - 40f), Offset(xPos, size.height - 30f), 2f)
-                    // Time text
                     drawText(
                         textMeasurer = textMeasurer,
-                        text = hourStrings[index],
+                        text = hourStrings[i],
                         style = TextStyle(color = Color.Gray, fontSize = 10.sp),
-                        topLeft = Offset(xPos - 15f, size.height - 30f)
-                    )                }
+                        topLeft = Offset(xPos - 20f, size.height - 30f)
+                    )
+                }
 
-                if (logs.isEmpty()) return@Canvas
-
-                // 5. Draw BG Trend Line and Dots
-                val bgLogs = logs.filter { it.bloodGlucose > 0 }
+                // 6. TREND LINE & DOTS
+                val bgLogs = logs.filter { it.bloodGlucose > 0 }.sortedBy { it.timestamp }
                 if (bgLogs.isNotEmpty()) {
                     val path = Path()
                     val points = mutableListOf<Offset>()
+
                     bgLogs.forEachIndexed { index, log ->
                         val x = timeToX(log.timestamp)
                         val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
                         points.add(Offset(x, y))
                         if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                     }
-                    drawPath(path = path, color = Color(0xFF00897B), style = Stroke(width = 4f))
+
+                    drawPath(path = path, color = Color(0xFF00897B), style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
                     points.forEachIndexed { index, point ->
                         val bg = bgLogs[index].bloodGlucose.toFloat()
-                        val dotColor = when { bg > 180 -> Color(0xFFFFB74D); bg < 70 -> Color(0xFFE53935); else -> Color(0xFF00897B) }
+                        val dotColor = when {
+                            bg > hyperLimit -> Color(0xFFFFB74D) // High
+                            bg < hypoLimit -> Color(0xFFE53935)  // Low
+                            else -> Color(0xFF00897B)            // Target
+                        }
                         drawCircle(color = Color.White, radius = 8f, center = point)
                         drawCircle(color = dotColor, radius = 6f, center = point)
                     }
                 }
 
-                // 6. DRAW SWIMLANE ICONS (No Text!)
+                // 7. SWIMLANE ICONS
                 logs.forEach { log ->
                     val x = timeToX(log.timestamp)
                     val iconRadius = 12f
 
-                    // Helper to draw just the icon + circle
                     fun drawSwimlaneIcon(yPos: Float, painter: androidx.compose.ui.graphics.vector.VectorPainter, tint: Color) {
-                        drawCircle(color = Color.White.copy(alpha = 0.9f), radius = iconRadius, center = Offset(x, yPos))
-                        drawCircle(color = tint.copy(alpha = 0.3f), radius = iconRadius, center = Offset(x, yPos), style = Stroke(width = 1.5f))
-
+                        drawCircle(color = Color.White, radius = iconRadius, center = Offset(x, yPos))
+                        drawCircle(color = tint.copy(alpha = 0.2f), radius = iconRadius, center = Offset(x, yPos), style = Stroke(width = 2f))
                         translate(left = x - 8f, top = yPos - 8f) {
                             with(painter) { draw(size = Size(16f, 16f), colorFilter = ColorFilter.tint(tint)) }
                         }
                     }
 
-                    // LANE 1: Carbs
-                    if (log.carbs > 0) {
-                        drawSwimlaneIcon(carbsY, mealPainter, Color(0xFFE91E63))
-                    }
-
-                    // LANE 2: Insulin
+                    if (log.carbs > 0) drawSwimlaneIcon(carbsY, mealPainter, Color(0xFFE91E63))
                     if (log.administeredDose > 0 || log.eventType == "SMART_BOLUS") {
                         val tint = if (log.eventType == "SMART_BOLUS") Color(0xFFFF9800) else Color(0xFF1976D2)
                         val painter = if (log.eventType == "SMART_BOLUS") bolusPainter else manualInsulinPainter

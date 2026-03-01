@@ -24,7 +24,11 @@ data class BolusSettings(
     val isfNight: Float = 50f,     // 23-06
 
     // Blood Glucose Target (Global for V1)
-    val targetBG: Float = 100f // mg/dL
+    val targetBG: Float = 100f,
+
+    val maxBolus: Float = 15.0f,    // Hard cap on calculator recommendations
+    val hypoLimit: Float = 70.0f,   // Low line for graph & hypo warnings
+    val hyperLimit: Float = 180.0f  // High line for graph
 ) {
     // Computed properties for display
     val durationDisplay: String

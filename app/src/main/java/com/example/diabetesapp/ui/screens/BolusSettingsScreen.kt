@@ -943,6 +943,50 @@ fun BolusSettingsScreen(
                     )
                 }
 
+                // Card 5: Safety Limits
+                ExpandableSettingsCard(
+                    title = "Safety & Graph Limits",
+                    isExpanded = viewModel.isCardExpanded(ExpandableCard.SAFETY_LIMITS),
+                    onToggleExpand = { viewModel.toggleCardExpansion(ExpandableCard.SAFETY_LIMITS) }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Max Bolus
+                        OutlinedTextField(
+                            value = draftSettings.maxBolus,
+                            onValueChange = { viewModel.updateMaxBolus(it) },
+                            label = { Text("Maximum Bolus (Units)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00897B))
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Hypo Limit
+                            OutlinedTextField(
+                                value = draftSettings.hypoLimit,
+                                onValueChange = { viewModel.updateHypoLimit(it) },
+                                label = { Text("Hypo Alert (mg/dL)", fontSize = 10.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00897B))
+                            )
+                            // Hyper Limit
+                            OutlinedTextField(
+                                value = draftSettings.hyperLimit,
+                                onValueChange = { viewModel.updateHyperLimit(it) },
+                                label = { Text("Hyper Alert (mg/dL)", fontSize = 10.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00897B))
+                            )
+                        }
+                        Text(
+                            text = "These limits control your app's warning system and scale your CGM graphs.",
+                            fontSize = 12.sp, color = Color.Gray, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        )
+                    }
+                }
+
                 // Keep a small spacer at the bottom of the list for visual padding when scrolling to the very end
                 Spacer(modifier = Modifier.height(16.dp))
             }
