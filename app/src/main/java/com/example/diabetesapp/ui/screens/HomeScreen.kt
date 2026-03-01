@@ -95,16 +95,17 @@ fun HomeScreen(
                 Text("Today's Glucose Trends", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (todaysLogs.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                        Text("No data logged today.", color = Color.Gray)
-                    }
-                } else {
+                // We remove the if/else entirely.
+                // We ALWAYS show the graph so the grid and target lines are visible.
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
                     TimeScaledBgGraph(
                         logs = todaysLogs,
                         dayStartTimestamp = logicalDayStart,
-                        modifier = Modifier.fillMaxWidth().height(200.dp)
+                        modifier = Modifier.fillMaxSize()
                     )
+
+                    // Optional: Overlay a subtle "No Data" hint if empty
+                    // so the user knows why there are no dots
                 }
             }
         }

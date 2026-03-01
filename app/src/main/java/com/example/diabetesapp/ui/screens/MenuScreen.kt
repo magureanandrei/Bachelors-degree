@@ -5,9 +5,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Watch
-import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,7 +21,8 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun MenuScreen(
     modifier: Modifier = Modifier,
-    onNavigateToBolusSettings: () -> Unit = {}
+    onNavigateToBolusSettings: () -> Unit = {},
+    onNavigateToTherapyProfile: () -> Unit = {} // FIXED TYPO HERE
 ) {
     Column(
         modifier = modifier
@@ -36,15 +38,23 @@ fun MenuScreen(
             modifier = Modifier.padding(vertical = 8.dp)
         )
 
-        // 1. Bolus Settings (Active)
+        // 1. Therapy & Hardware Profile (NEW)
         MenuOptionCard(
-            title = "Insulin Profile",
+            title = "Therapy Profile",
+            subtitle = "Pump vs. MDI, CGM vs. Manual",
+            icon = Icons.Default.MedicalServices, // Added a nice medical icon
+            onClick = onNavigateToTherapyProfile
+        )
+
+        // 2. Bolus Settings (Existing)
+        MenuOptionCard(
+            title = "Insulin Parameters",
             subtitle = "ICR, ISF, Target BG",
             icon = Icons.Default.Settings,
             onClick = onNavigateToBolusSettings
         )
 
-        // 2. Future Placeholder: Dexcom
+        // 3. Future Placeholder: Dexcom
         MenuOptionCard(
             title = "CGM Integration",
             subtitle = "Connect Dexcom / Nightscout (Coming Soon)",
@@ -52,7 +62,7 @@ fun MenuScreen(
             onClick = { /* TODO in the future */ }
         )
 
-        // 3. Future Placeholder: Smartwatch
+        // 4. Future Placeholder: Smartwatch
         MenuOptionCard(
             title = "Wearables",
             subtitle = "Smartwatch sync (Coming Soon)",

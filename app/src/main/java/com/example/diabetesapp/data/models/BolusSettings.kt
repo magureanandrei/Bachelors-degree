@@ -1,6 +1,10 @@
 package com.example.diabetesapp.data.models
 
 data class BolusSettings(
+
+    val therapyType: String = "MDI", // "MDI", "PUMP_STANDARD", "PUMP_AID"
+    val glucoseSource: String = "MANUAL",  // "MANUAL" or "CGM"
+
     // General Configuration
     val insulinType: InsulinType = InsulinType.NOVORAPID,
     val durationOfAction: Float = 4.0f, // Duration in hours (decimal)

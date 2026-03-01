@@ -90,11 +90,16 @@ fun MainScreen() {
             "education" -> EducationScreen(modifier = Modifier.padding(innerPadding)) // NEW
             "menu" -> MenuScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateToBolusSettings = { navigateTo("bolus_settings") } // Removed the old calculate/log params
+                onNavigateToBolusSettings = { navigateTo("bolus_settings") },
+                onNavigateToTherapyProfile = { navigateTo("therapy_profile") } // FIXED TYPO HERE
             )
 
             // Detail screens (no bottom bar)
             "bolus_settings" -> BolusSettingsScreen(
+                modifier = Modifier.padding(innerPadding),
+                onNavigateBack = navigateBack
+            )
+            "therapy_profile" -> TherapyProfileScreen( // <-- Add this block
                 modifier = Modifier.padding(innerPadding),
                 onNavigateBack = navigateBack
             )
