@@ -138,24 +138,6 @@ fun CalculatorView(
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
 
-        // Info Banner
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)), // Light Blue
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF1976D2))
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "Smart Bolus is a proactive tool for calculating doses and planning future activities. For past events, use the Manual Log.",
-                    fontSize = 13.sp,
-                    color = Color(0xFF0D47A1),
-                    lineHeight = 18.sp
-                )
-            }
-        }
-
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -178,7 +160,14 @@ fun CalculatorView(
                     placeholder = { Text("Enter BG (mg/dL)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     isError = inputState.bloodGlucoseError != null,
-                    supportingText = inputState.bloodGlucoseError?.let { { Text(it, color = Color.Red) } },
+                    supportingText = inputState.bloodGlucoseError?.let {
+                        {
+                            Text(
+                                it,
+                                color = Color.Red
+                            )
+                        }
+                    },
                     shape = RoundedCornerShape(12.dp)
                 )
 
@@ -203,7 +192,9 @@ fun CalculatorView(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (inputState.isSportModeActive) Color(0xFFE0F2F1) else Color(0xFFF5F5F5)
+                        containerColor = if (inputState.isSportModeActive) Color(0xFFE0F2F1) else Color(
+                            0xFFF5F5F5
+                        )
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -240,7 +231,12 @@ fun CalculatorView(
                                         onClick = { showSportInfoDialog = true },
                                         modifier = Modifier.size(24.dp).padding(start = 4.dp)
                                     ) {
-                                        Icon(Icons.Default.Info, contentDescription = "Sport Info", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                        Icon(
+                                            Icons.Default.Info,
+                                            contentDescription = "Sport Info",
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(16.dp)
+                                        )
                                     }
                                 }
 
@@ -252,14 +248,27 @@ fun CalculatorView(
                                         OutlinedButton(
                                             onClick = { viewModel.updateSportType(type) },
                                             modifier = Modifier.weight(1f),
-                                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                                            contentPadding = PaddingValues(
+                                                horizontal = 0.dp,
+                                                vertical = 8.dp
+                                            ),
                                             shape = RoundedCornerShape(8.dp),
                                             colors = ButtonDefaults.outlinedButtonColors(
-                                                containerColor = if (inputState.sportType == type) Color(0xFF00695C) else Color.Transparent,
-                                                contentColor = if (inputState.sportType == type) Color.White else Color(0xFF00695C)
+                                                containerColor = if (inputState.sportType == type) Color(
+                                                    0xFF00695C
+                                                ) else Color.Transparent,
+                                                contentColor = if (inputState.sportType == type) Color.White else Color(
+                                                    0xFF00695C
+                                                )
                                             )
                                         ) {
-                                            Text(type, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                type,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
                                         }
                                     }
                                 }
@@ -271,11 +280,24 @@ fun CalculatorView(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text("Start Time", fontSize = 14.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "Start Time",
+                                            fontSize = 14.sp,
+                                            color = Color.Gray,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                         if (inputState.minutesUntilSport > 0) {
-                                            Text("In ~${inputState.minutesUntilSport.toInt()} mins", fontSize = 12.sp, color = Color(0xFFFF9800))
+                                            Text(
+                                                "In ~${inputState.minutesUntilSport.toInt()} mins",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFFFF9800)
+                                            )
                                         } else {
-                                            Text("Right Now", fontSize = 12.sp, color = Color(0xFF00695C))
+                                            Text(
+                                                "Right Now",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF00695C)
+                                            )
                                         }
                                     }
 
@@ -291,28 +313,44 @@ fun CalculatorView(
                                             singleLine = true,
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 disabledTextColor = Color.Black,
-                                                disabledBorderColor = if (inputState.minutesUntilSport > 0) Color(0xFFFF9800) else Color.LightGray
+                                                disabledBorderColor = if (inputState.minutesUntilSport > 0) Color(
+                                                    0xFFFF9800
+                                                ) else Color.LightGray
                                             )
                                         )
                                     }
                                 }
 
                                 // Intensity Slider
-                                Text("Intensity: ${inputState.sportIntensity}", fontSize = 14.sp, color = Color.Gray)
+                                Text(
+                                    "Intensity: ${inputState.sportIntensity}",
+                                    fontSize = 14.sp,
+                                    color = Color.Gray
+                                )
                                 Slider(
                                     value = inputState.sportIntensityValue,
                                     onValueChange = { viewModel.updateSportIntensity(it) },
                                     valueRange = 1f..3f, steps = 1,
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C))
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF00695C),
+                                        activeTrackColor = Color(0xFF00695C)
+                                    )
                                 )
 
                                 // Duration Slider
-                                Text("Duration: ${inputState.sportDurationMinutes.toInt()} min", fontSize = 14.sp, color = Color.Gray)
+                                Text(
+                                    "Duration: ${inputState.sportDurationMinutes.toInt()} min",
+                                    fontSize = 14.sp,
+                                    color = Color.Gray
+                                )
                                 Slider(
                                     value = inputState.sportDurationMinutes,
                                     onValueChange = { viewModel.updateSportDuration(it) },
                                     valueRange = 15f..120f,
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00695C), activeTrackColor = Color(0xFF00695C))
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF00695C),
+                                        activeTrackColor = Color(0xFF00695C)
+                                    )
                                 )
                             }
                         }
@@ -336,10 +374,30 @@ fun CalculatorView(
                 ) {
                     Text("Calculate Bolus", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
+            } // 1. THIS closes the inner Column containing all the inputs
+        } // 2. THIS closes the main white Input Card. (You were likely missing this one!)
+
+        // 3. NOW we place the Info Card safely in the parent scrollable Column
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)), // Light Blue
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF1976D2))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Smart Bolus is a proactive tool for calculating doses and planning future activities. For past events, use the Manual Log.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF0D47A1),
+                    lineHeight = 18.sp
+                )
             }
         }
-    }
-    // ... Keep the showSportInfoDialog code exactly the same below this
+
+        Spacer(modifier = Modifier.height(16.dp))
+    } // 4. THIS closes the parent scrollable Column
+// 5. THIS closes the Scaffold/Screen
 
     // The Educational Dialog
     if (showSportInfoDialog) {

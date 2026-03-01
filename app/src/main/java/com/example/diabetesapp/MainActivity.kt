@@ -39,8 +39,8 @@ fun MainScreen() {
     BackHandler(enabled = backStack.size > 1) {
         backStack = backStack.dropLast(1)
         val previousScreen = backStack.last()
-        // Sync the bottom nav bar if we go back to a main tab
-        if (previousScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+        // FIX: Replaced "bolus" with "education"
+        if (previousScreen in listOf("home", "history", "stats", "education", "menu")) {
             selectedRoute = previousScreen
         }
     }
@@ -49,7 +49,8 @@ fun MainScreen() {
     val navigateTo = { route: String ->
         if (currentScreen != route) {
             backStack = backStack + route
-            if (route in listOf("home", "bolus", "history", "stats", "menu")) {
+            // FIX: Replaced "bolus" with "education"
+            if (route in listOf("home", "history", "stats", "education", "menu")) {
                 selectedRoute = route
             }
         }
@@ -60,7 +61,8 @@ fun MainScreen() {
         if (backStack.size > 1) {
             backStack = backStack.dropLast(1)
             val previousScreen = backStack.last()
-            if (previousScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+            // FIX: Replaced "bolus" with "education"
+            if (previousScreen in listOf("home", "history", "stats", "education", "menu")) {
                 selectedRoute = previousScreen
             }
         }

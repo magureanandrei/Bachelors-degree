@@ -257,6 +257,24 @@ fun LogReadingScreen(
             ) {
                 Text("Analyze & Log", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)), // Light Blue
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF1976D2))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Use the Manual Log to record past events so your history and active insulin tracking stay accurate. For future planning and dose calculations, use Smart Bolus.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF0D47A1),
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 

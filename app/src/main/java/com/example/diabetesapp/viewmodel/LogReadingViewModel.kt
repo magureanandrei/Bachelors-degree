@@ -55,7 +55,22 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 
     init { resetState() }
 
-    fun updateTime(value: String) { _uiState.value = _uiState.value.copy(eventTime = value) }
+    fun updateTime(value: String) {
+        // Use your existing helper to figure out the exact millisecond timestamp
+        val timestamp = getParsedTimestamp(value)
+
+        if (timestamp > System.currentTimeMillis()) {
+            // The time is in the future! Snap back to NOW.
+            val now = LocalTime.now()
+            _uiState.value = _uiState.value.copy(
+                eventTime = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                errorMessage = "Cannot log events in the future. Reset to current time."
+            )
+        } else {
+            // The time is valid (past or present), accept it.
+            _uiState.value = _uiState.value.copy(eventTime = value, errorMessage = null)
+        }
+    }
     fun updateBloodGlucose(value: String) { _uiState.value = _uiState.value.copy(bloodGlucose = value, errorMessage = null) }
     fun updateCarbs(value: String) { _uiState.value = _uiState.value.copy(carbs = value, errorMessage = null) }
     fun updateManualInsulin(value: String) { _uiState.value = _uiState.value.copy(manualInsulin = value, errorMessage = null) }
@@ -108,6 +123,11 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 
         if (bg == 0.0 && carbs == 0.0 && insulin == 0.0 && !state.isSportModeActive) {
             _uiState.value = _uiState.value.copy(errorMessage = "Please enter data or switch to Sport Mode.")
+            return
+        }
+        val eventTimestamp = getParsedTimestamp(state.eventTime)
+        if (eventTimestamp > System.currentTimeMillis()) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Cannot log manual events in the future. Please fix the time.")
             return
         }
 
