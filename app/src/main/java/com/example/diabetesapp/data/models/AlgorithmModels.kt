@@ -48,8 +48,10 @@ data class PatientContext(
 
     // 4. Advanced Clinical Dimensions
     val isCompetitiveEvent: Boolean = false,
+    val timeOfDay: LocalTime = LocalTime.now(),
+    val isHighStress: Boolean = false,
+    val isIllness: Boolean = false,
     val isExtremeHeat: Boolean = false,
-    val timeOfDay: LocalTime = LocalTime.now()
 )
 
 // --- THE OUTPUT: What the algorithm gives back to the UI ---

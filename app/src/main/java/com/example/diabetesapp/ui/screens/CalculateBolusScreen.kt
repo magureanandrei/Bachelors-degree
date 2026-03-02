@@ -2,6 +2,7 @@ package com.example.diabetesapp.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,7 +11,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -98,10 +102,6 @@ fun CalculateBolusScreen(
                         viewModel.logEntry(context)
                         viewModel.dismissResultDialog()
                         onNavigateBack() // Navigate Back to Home
-                    },
-                    onGoHome = {
-                        viewModel.dismissResultDialog()
-                        onNavigateBack()
                     }
                 )
             }
@@ -357,6 +357,13 @@ fun CalculatorView(
                     }
                 }
 
+                ContextFactorSection(
+                    selectedFactor = inputState.selectedFactor,
+                    isExpanded = inputState.isContextExpanded,
+                    onToggle = { viewModel.toggleContextSection() },
+                    onFactorSelected = { viewModel.updateSelectedFactor(it) }
+                )
+
                 OutlinedTextField(
                     value = inputState.notes,
                     onValueChange = { viewModel.updateNotes(it) },
@@ -449,8 +456,7 @@ fun ResultDialog(
     sportLog: String,
     onAdjustDose: (Double) -> Unit,
     onDismiss: () -> Unit,
-    onLogAndSave: () -> Unit,
-    onGoHome: () -> Unit
+    onLogAndSave: () -> Unit
 ) {
     val displayDose = userAdjustedDose ?: calculatedDose
     val isPlanned = isSportModeActive && minutesUntilSport > 0
@@ -559,4 +565,67 @@ fun ResultDialog(
         shape = RoundedCornerShape(20.dp),
         containerColor = Color.White
     )
+}
+
+@Composable
+fun ContextFactorSection(
+    selectedFactor: String,
+    isExpanded: Boolean,
+    onToggle: () -> Unit,
+    onFactorSelected: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(Color.White, RoundedCornerShape(12.dp))
+            .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { onToggle() },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Tune, contentDescription = null, tint = Color(0xFF00897B))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Outside Factors", fontWeight = FontWeight.Bold)
+            }
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null
+            )
+        }
+
+        if (isExpanded) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val options = listOf("None", "Stress", "Illness", "Heat")
+                options.forEach { option ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .background(
+                                if (selectedFactor == option) Color(0xFF00897B) else Color(0xFFF5F5F5),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { onFactorSelected(option) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = option,
+                            color = if (selectedFactor == option) Color.White else Color.Black,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

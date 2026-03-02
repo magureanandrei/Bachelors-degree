@@ -57,7 +57,11 @@ data class BolusInputState(
     val manualInsulinError: String? = null,
     val warningMessage: String? = null,
     val showAdvancedConfirmationDialog: Boolean = false,
-    val showResultDialog: Boolean = false
+    val showResultDialog: Boolean = false,
+
+    // NEW: Context toggles
+    val isContextExpanded: Boolean = false,
+    val selectedFactor: String = "None"
 )
 
 class CalculateBolusViewModel(private val repository: BolusLogRepository) : ViewModel() {
@@ -122,6 +126,20 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         _inputState.value = _inputState.value.copy(warningMessage = null)
     }
 
+    fun toggleContextSection() {
+        _inputState.value = _inputState.value.copy(isContextExpanded = !_inputState.value.isContextExpanded)
+    }
+
+    fun updateSelectedFactor(factor: String) {
+        _inputState.value = _inputState.value.copy(selectedFactor = factor)
+        // Auto-recalculate if values are already entered, but DO NOT open the dialog effectively
+        // Actually, we should probably just store the factor. The user will hit calculate when they are ready.
+        // If we want to update the background calculation, we can, but let's avoid popping the dialog if it's not open.
+        if (_inputState.value.bloodGlucose.isNotEmpty() && _inputState.value.showResultDialog) {
+            performCalculation(showDialog = true)
+        }
+    }
+
     fun setInputMode(mode: InputMode) { _inputState.value = _inputState.value.copy(inputMode = mode) }
     fun updateDate(value: String) { _inputState.value = _inputState.value.copy(currentDate = value) }
     fun updateTime(value: String) { _inputState.value = _inputState.value.copy(currentTime = value) }
@@ -157,7 +175,7 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
 
     fun proceedWithCalculation() {
         _inputState.value = _inputState.value.copy(showAdvancedConfirmationDialog = false)
-        performCalculation()
+        performCalculation(showDialog = false)
     }
 
     fun calculateBolus() {
@@ -167,10 +185,10 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
             _inputState.value = _inputState.value.copy(bloodGlucoseError = "BG required")
             return
         }
-        performCalculation()
+        performCalculation(showDialog = true)
     }
 
-    private fun performCalculation() {
+    private fun performCalculation(showDialog: Boolean) {
         val state = _inputState.value
         val context = PatientContext(
             therapyType = TherapyType.MDI_PENS,
@@ -185,6 +203,9 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
             sportIntensity = state.sportIntensityValue.toInt(),
             sportDurationMins = state.sportDurationMinutes.toInt(),
             minutesUntilSport = state.minutesUntilSport.toInt(), // NOW WIRED TO SLIDER
+            isHighStress = state.selectedFactor == "Stress",
+            isIllness = state.selectedFactor == "Illness",
+            isExtremeHeat = state.selectedFactor == "Heat",
             timeOfDay = LocalTime.now()
         )
 
@@ -197,7 +218,7 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
             sportReductionLog = decision.clinicalRationale,
             warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
             showResult = true,
-            showResultDialog = true
+            showResultDialog = showDialog
         )
     }
 
@@ -221,9 +242,11 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
                         bloodGlucose = bg, carbs = carbs,
                         standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
                         isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
-                        notes = "Pre-workout preparation.",
-                        // FIX: The insight goes here, with the insulin!
-                        clinicalSuggestion = state.sportReductionLog
+                        notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes,
+                        clinicalSuggestion = state.sportReductionLog,
+                        isHighStress = state.selectedFactor == "Stress",
+                        isIllness = state.selectedFactor == "Illness",
+                        isExtremeHeat = state.selectedFactor == "Heat"
                     )
                     repository.insert(currentLog)
                 }
@@ -239,7 +262,10 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
                     sportType = state.sportType, sportIntensity = state.sportIntensity, sportDuration = state.sportDurationMinutes,
                     // FIX: Only put the insight here if they didn't take any insulin/carbs
                     clinicalSuggestion = if (bg == 0.0 && carbs == 0.0 && dose == 0.0) state.sportReductionLog else null,
-                    notes = state.notes
+                    notes = state.notes,
+                    isHighStress = state.selectedFactor == "Stress",
+                    isIllness = state.selectedFactor == "Illness",
+                    isExtremeHeat = state.selectedFactor == "Heat"
                 )
                 repository.insert(sportLog)
 
@@ -249,10 +275,25 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
             } else {
                 // Normal immediate log
                 val log = BolusLog(
-                    timestamp = now, eventType = "SMART_BOLUS", status = "COMPLETED",
-                    bloodGlucose = bg, carbs = carbs, standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
-                    isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
-                    clinicalSuggestion = state.sportReductionLog, notes = state.notes
+                    timestamp = now,
+                    eventType = "SMART_BOLUS",
+                    status = "COMPLETED",
+                    bloodGlucose = bg,
+                    carbs = carbs,
+                    standardDose = state.standardDose,
+                    suggestedDose = state.calculatedDose,
+                    administeredDose = dose,
+                    isSportModeActive = false,
+                    sportType = null,
+                    sportIntensity = null,
+                    sportDuration = null,
+                    clinicalSuggestion = state.sportReductionLog,
+                    // ADD THESE THREE LINES:
+                    isHighStress = state.selectedFactor == "Stress",
+                    isIllness = state.selectedFactor == "Illness",
+                    isExtremeHeat = state.selectedFactor == "Heat",
+                    // AND UPDATE THE NOTE:
+                    notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes
                 )
                 repository.insert(log)
             }

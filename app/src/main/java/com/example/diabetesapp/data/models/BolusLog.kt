@@ -24,6 +24,13 @@ data class BolusLog(
     val sportIntensity: String?,
     val sportDuration: Float?,
     val notes: String,
+    val activeAdjustment: String = "None", // "None", "Illness", "Stress", "Heat"
+    val adjustmentScale: Float = 1.0f,
+
+    // NEW FIELDS
+    val isHighStress: Boolean = false,
+    val isIllness: Boolean = false,
+    val isExtremeHeat: Boolean = false,
 
     val clinicalSuggestion: String?
 )
