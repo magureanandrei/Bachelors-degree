@@ -574,6 +574,8 @@ fun ContextFactorSection(
     onToggle: () -> Unit,
     onFactorSelected: (String) -> Unit
 ) {
+    var showInfo by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -591,6 +593,19 @@ fun ContextFactorSection(
                 Icon(Icons.Default.Tune, contentDescription = null, tint = Color(0xFF00897B))
                 Spacer(modifier = Modifier.width(12.dp))
                 Text("Outside Factors", fontWeight = FontWeight.Bold)
+
+                // Info Icon
+                IconButton(
+                    onClick = { showInfo = !showInfo },
+                    modifier = Modifier.size(24.dp).padding(start = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = "Info",
+                        tint = Color.Gray,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
             Icon(
                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -598,34 +613,100 @@ fun ContextFactorSection(
             )
         }
 
+        if (showInfo) {
+             FactorInfoCard()
+             Spacer(modifier = Modifier.height(16.dp))
+        }
+
         if (isExpanded) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val options = listOf("None", "Stress", "Illness", "Heat")
-                options.forEach { option ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .background(
-                                if (selectedFactor == option) Color(0xFF00897B) else Color(0xFFF5F5F5),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { onFactorSelected(option) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = option,
-                            color = if (selectedFactor == option) Color.White else Color.Black,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+            Spacer(modifier = Modifier.height(8.dp)) // Reduced spacing since info might not be there
+
+            // 2x2 Grid Layout
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                // Row 1: None & Stress
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FactorOption(
+                        label = "None",
+                        isSelected = selectedFactor == "None",
+                        onClick = { onFactorSelected("None") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FactorOption(
+                        label = "Stress",
+                        isSelected = selectedFactor == "Stress",
+                        onClick = { onFactorSelected("Stress") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Row 2: Illness & Heat
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FactorOption(
+                        label = "Illness",
+                        isSelected = selectedFactor == "Illness",
+                        onClick = { onFactorSelected("Illness") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FactorOption(
+                        label = "Heat",
+                        isSelected = selectedFactor == "Heat",
+                        onClick = { onFactorSelected("Heat") },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun FactorOption(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .aspectRatio(2f) // Rectangular shape for better text fit
+            .background(
+                if (isSelected) Color(0xFF00897B) else Color(0xFFF5F5F5),
+                RoundedCornerShape(8.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (isSelected) Color.White else Color.Black,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun FactorInfoCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text("How Advice is Adjusted", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1565C0))
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Manual Factors
+            Text("• Illness & Stress: Increases insulin resistance. The algorithm adds a percentage-based buffer to your dose.", fontSize = 12.sp)
+            Text("• Extreme Heat: Increases absorption speed. The algorithm reduces the dose slightly to prevent hypoglycemia.", fontSize = 12.sp)
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.5f))
+
+            // Time-of-Day Settings (Educational)
+            Text("• Time of Day: The algorithm automatically switches between your Morning, Noon, Evening, and Night ratios.", fontSize = 12.sp)
+            Text("• Personalization: You can adjust these specific Ratios (ICR) and Sensitivity (ISF) values in the Settings menu.",
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0D47A1))
         }
     }
 }

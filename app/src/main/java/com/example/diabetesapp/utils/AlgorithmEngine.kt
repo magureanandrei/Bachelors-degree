@@ -66,6 +66,20 @@ object AlgorithmEngine {
         }
 
         // ---------------------------------------------------------
+        // 2.5. OUTSIDE FACTORS (Illness, Stress)
+        // ---------------------------------------------------------
+        if (baseInsulin > 0) {
+            if (context.isIllness) {
+                baseInsulin *= 1.25
+                logBuilder.append("\n🩺 Illness: +25% buffer added for resistance. ")
+            }
+            if (context.isHighStress) {
+                baseInsulin *= 1.15
+                logBuilder.append("\n😫 Stress: +15% buffer added for cortisol spike. ")
+            }
+        }
+
+        // ---------------------------------------------------------
         // 3. SPORT MODIFIERS & CARB SUGGESTIONS
         // ---------------------------------------------------------
         if (context.isDoingSport) {
