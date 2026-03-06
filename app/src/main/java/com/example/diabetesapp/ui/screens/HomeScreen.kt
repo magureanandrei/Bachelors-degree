@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
+import com.example.diabetesapp.ui.components.DoseBreakdownCard
 
 @Composable
 fun HomeScreen(
@@ -58,7 +59,7 @@ fun HomeScreen(
     val database = remember { BolusDatabase.getDatabase(context) }
     val logRepository = remember { BolusLogRepository(database.bolusLogDao()) }
     // Ensure this repository is the one that reads/writes your High/Low/Target
-    val settingsRepository = remember { com.example.diabetesapp.data.repository.BolusSettingsRepository(context) }
+    val settingsRepository = remember { BolusSettingsRepository(context) }
 
     val viewModel: DashboardViewModel = viewModel(
         factory = DashboardViewModelFactory(logRepository, settingsRepository)
@@ -71,16 +72,6 @@ fun HomeScreen(
     val logicalDayStart = remember(allLogs) { getLogicalDayStartTimestamp() }
     val todaysLogs = allLogs.filter { it.timestamp >= logicalDayStart }.sortedBy { it.timestamp }
 
-    key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
-        TimeScaledBgGraph(
-            logs = todaysLogs,
-            dayStartTimestamp = logicalDayStart,
-            targetBg = settings.targetBG,
-            hypoLimit = settings.hypoLimit,
-            hyperLimit = settings.hyperLimit,
-            modifier = Modifier.fillMaxSize()
-        )
-    }
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
 
 
@@ -622,18 +613,14 @@ fun LogDetailsDialog(log: BolusLog, onDismiss: () -> Unit) {
                     Text(log.notes, fontSize = 14.sp, color = Color.DarkGray)
                 }
 
+// Replaced with shared DoseBreakdownCard
                 if (!log.clinicalSuggestion.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Algorithm Insight", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(log.clinicalSuggestion, fontSize = 13.sp, color = Color(0xFF004D40), lineHeight = 18.sp)
-                        }
-                    }
+                    DoseBreakdownCard(
+                        standardDose = log.standardDose ?: 0.0,
+                        suggestedDose = log.suggestedDose ?: 0.0,
+                        rationale = log.clinicalSuggestion
+                    )
                 }
             }
         },

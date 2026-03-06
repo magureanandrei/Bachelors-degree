@@ -1,19 +1,16 @@
 package com.example.diabetesapp.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.*
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,10 +20,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.viewmodel.BolusInputState
@@ -91,6 +90,7 @@ fun CalculateBolusScreen(
 
             if (inputState.showResultDialog && inputState.calculatedDose != null) {
                 ResultDialog(
+                    standardDose = inputState.standardDose ?: 0.0,
                     calculatedDose = inputState.calculatedDose!!,
                     userAdjustedDose = inputState.userAdjustedDose,
                     isSportModeActive = inputState.isSportModeActive,
@@ -449,6 +449,7 @@ fun CalculatorView(
 
 @Composable
 fun ResultDialog(
+    standardDose: Double,
     calculatedDose: Double,
     userAdjustedDose: Double?,
     isSportModeActive: Boolean,
@@ -537,19 +538,11 @@ fun ResultDialog(
                     }
                 }
 
-                if (isSportModeActive && sportLog.isNotBlank()) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Algorithm Breakdown:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(sportLog, fontSize = 12.sp, color = Color.DarkGray, lineHeight = 16.sp)
-                        }
-                    }
-                }
+                DoseBreakdownCard(
+                    standardDose = standardDose,
+                    suggestedDose = calculatedDose,
+                    rationale = sportLog
+                )
             }
         },
         confirmButton = {
@@ -710,3 +703,5 @@ fun FactorInfoCard() {
         }
     }
 }
+
+// DoseBreakdownCard has been moved to com.example.diabetesapp.ui.components.SharedComponents.kt

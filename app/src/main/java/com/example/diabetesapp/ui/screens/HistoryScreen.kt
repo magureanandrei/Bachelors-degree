@@ -29,6 +29,7 @@ import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
+import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -204,18 +205,13 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
+// Replaced with shared DoseBreakdownCard
                     if (!log.clinicalSuggestion.isNullOrBlank()) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text("CDSS Insight:", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(log.clinicalSuggestion, fontSize = 13.sp, color = Color(0xFF004D40), lineHeight = 18.sp)
-                            }
-                        }
+                        DoseBreakdownCard(
+                            standardDose = log.standardDose ?: 0.0,
+                            suggestedDose = log.suggestedDose ?: 0.0,
+                            rationale = log.clinicalSuggestion
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
