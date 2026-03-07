@@ -119,6 +119,10 @@ fun CalculatorView(
     // --- NEW: Time Picker Setup ---
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        viewModel.autoFetchLiveCgmData()
+    }
+
     // Parse the current planned time to set the picker's initial position
     val timeParts = inputState.plannedSportTime.split(":")
     val initialHour = timeParts.getOrNull(0)?.toIntOrNull() ?: java.time.LocalTime.now().hour

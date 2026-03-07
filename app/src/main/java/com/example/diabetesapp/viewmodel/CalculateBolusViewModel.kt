@@ -10,11 +10,15 @@ import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
+import com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip
 import com.example.diabetesapp.utils.WorkoutNotificationManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -26,6 +30,8 @@ data class BolusInputState(
     val currentDate: String = "",
     val currentTime: String = "",
     val bloodGlucose: String = "",
+    val cgmTrendString: String = "",
+    val minutesToLow: Int? = null,
     val carbs: String = "",
     val manualInsulin: String = "",
     val correctionAmount: String = "",
@@ -164,6 +170,41 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
     fun updateSportIntensity(value: Float) {
         val intensityString = when (value.toInt()) { 1 -> "Low"; 2 -> "Medium"; 3 -> "High"; else -> "Medium" }
         _inputState.value = _inputState.value.copy(sportIntensityValue = value, sportIntensity = intensityString)
+    }
+
+    fun autoFetchLiveCgmData() {
+        android.util.Log.d("CGM_Fetch", "--> 1. ViewModel requested data")
+
+        // 1. Launch a background thread specifically for networking (Dispatchers.IO)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 2. Make the HTTP call
+                val cgmData = getLatestBgFromXDrip()
+
+                // 3. Switch back to the Main thread to update the UI State
+                withContext(Dispatchers.Main) {
+                    if (cgmData != null) {
+                        android.util.Log.d("CGM_Fetch", "--> 4. ViewModel received BG: ${cgmData.bgValue}")
+                        _inputState.update { current ->
+                            if (current.bloodGlucose.isBlank()) {
+                                current.copy(
+                                    bloodGlucose = cgmData.bgValue.toString(),
+                                    cgmTrendString = cgmData.trendString,
+                                    activeInsulin = cgmData.iob?.toString() ?: current.activeInsulin,
+                                    warningMessage = "Auto-filled BG & IOB from pump!"
+                                )
+                            } else {
+                                current
+                            }
+                        }
+                    } else {
+                        android.util.Log.e("CGM_Fetch", "--> 4. ViewModel received NULL")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("CGM_Fetch", "--> 4. ViewModel Coroutine Crash", e)
+            }
+        }
     }
 
     fun adjustSuggestedDose(delta: Double) {

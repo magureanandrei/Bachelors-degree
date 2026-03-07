@@ -11,11 +11,16 @@ import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
+import com.example.diabetesapp.utils.CgmHelper
+import com.example.diabetesapp.utils.CgmReading
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalTime
 
 class DashboardViewModel(
@@ -30,16 +35,36 @@ class DashboardViewModel(
         emptyList()
     )
 
-    // NEW: Observe live settings from the database.
-    // When you change limits in the settings screen, this Flow emits the new values.
+    // Observe live settings from the database.
     val settings: StateFlow<BolusSettings> = settingsRepository.settings.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         BolusSettings()
     )
 
+    // --- NEW: CGM Graph Data State ---
+    private val _cgmReadings = MutableStateFlow<List<CgmReading>>(emptyList())
+    val cgmReadings: StateFlow<List<CgmReading>> = _cgmReadings.asStateFlow()
+
     // State to trigger the Verification Modal
     val unverifiedWorkout = MutableStateFlow<BolusLog?>(null)
+
+    // --- NEW: Background Fetcher for the 24-Hour Graph ---
+    fun fetchCgmHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Fetch the array on the background thread
+                val history = CgmHelper.getBgHistoryFromXDrip()
+
+                // Switch back to Main thread to update the UI State
+                withContext(Dispatchers.Main) {
+                    _cgmReadings.value = history
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     fun checkForPendingWorkouts(logs: List<BolusLog>) {
         val now = System.currentTimeMillis()
@@ -121,7 +146,7 @@ class DashboardViewModel(
 
 class DashboardViewModelFactory(
     private val repository: BolusLogRepository,
-    private val settingsRepository: BolusSettingsRepository // Added here too
+    private val settingsRepository: BolusSettingsRepository
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DashboardViewModel::class.java)) {

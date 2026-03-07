@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.DoseBreakdownCard
+import com.example.diabetesapp.utils.CgmReading
 
 @Composable
 fun HomeScreen(
@@ -80,6 +81,12 @@ fun HomeScreen(
     LaunchedEffect(allLogs) {
         viewModel.checkForPendingWorkouts(allLogs)
     }
+    val cgmReadings by viewModel.cgmReadings.collectAsState()
+
+    // Fetch the history when the logical day changes (or screen opens)
+    LaunchedEffect(logicalDayStart) {
+        viewModel.fetchCgmHistory()
+    }
 
     Column(
         modifier = modifier
@@ -108,6 +115,7 @@ fun HomeScreen(
                     Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
                         TimeScaledBgGraph(
                             logs = todaysLogs,
+                            cgmReadings = cgmReadings,
                             dayStartTimestamp = logicalDayStart,
                             targetBg = settings.targetBG,
                             hypoLimit = settings.hypoLimit,
@@ -174,6 +182,7 @@ fun getLogicalDayStartTimestamp(): Long {
 @Composable
 fun TimeScaledBgGraph(
     logs: List<BolusLog>,
+    cgmReadings: List<CgmReading> = emptyList(),
     dayStartTimestamp: Long,
     targetBg: Float = 100f,
     hypoLimit: Float = 70f,
@@ -280,6 +289,40 @@ fun TimeScaledBgGraph(
                 drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 120f), Offset(graphWidth, size.height - 120f), 2f)
                 drawLine(Color(0xFFF5F5F5), Offset(0f, size.height - 80f), Offset(graphWidth, size.height - 80f), 1f)
                 drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 40f), Offset(graphWidth, size.height - 40f), 2f)
+
+                // --- 3.5 CONTINUOUS CGM LINE ---
+                if (cgmReadings.isNotEmpty()) {
+                    val cgmPath = Path()
+                    var isFirstPoint = true
+                    val validReadings = cgmReadings.filter { it.bgValue > 0 }
+
+                    validReadings.forEach { reading ->
+                        // Use your existing math functions to perfectly align the dots!
+                        val x = timeToX(reading.timestamp)
+                        val y = bgToY(reading.bgValue.toFloat().coerceIn(minBg, maxBg))
+
+                        // Only draw if the timestamp falls within the current 24-hour window
+                        if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + twentyFourHoursMs.toLong()) {
+                            if (isFirstPoint) {
+                                cgmPath.moveTo(x, y)
+                                isFirstPoint = false
+                            } else {
+                                cgmPath.lineTo(x, y)
+                            }
+                        }
+                    }
+
+                    // Paint the line onto the canvas
+                    drawPath(
+                        path = cgmPath,
+                        color = Color(0xFF00897B).copy(alpha = 0.6f), // Slightly transparent teal
+                        style = Stroke(
+                            width = 3.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+                }
 
                 // 4. SPORT DURATIONS
                 logs.filter { it.isSportModeActive && it.sportDuration != null }.forEach { sportLog ->
