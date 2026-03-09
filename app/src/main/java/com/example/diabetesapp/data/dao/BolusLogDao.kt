@@ -26,5 +26,8 @@ interface BolusLogDao {
     @Delete
     suspend fun delete(bolusLog: BolusLog)
 
+    @Query("SELECT * FROM bolus_log WHERE bloodGlucose > 0 ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getLatestManualBgLog(): BolusLog?
+
 }
 

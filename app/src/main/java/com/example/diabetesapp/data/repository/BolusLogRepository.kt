@@ -24,4 +24,8 @@ class BolusLogRepository(private val bolusLogDao: BolusLogDao) {
     suspend fun delete(bolusLog: BolusLog) {
         bolusLogDao.delete(bolusLog)
     }
+
+    suspend fun getLatestManualBgLog(): BolusLog? {
+        return bolusLogDao.getLatestManualBgLog()
+    }
 }

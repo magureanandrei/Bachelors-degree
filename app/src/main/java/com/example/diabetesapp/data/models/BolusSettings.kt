@@ -37,6 +37,9 @@ data class BolusSettings(
     val targetBGDisplay: String
         get() = "${targetBG.toInt()} mg/dL"
 
+    val isCGMEnabled: Boolean
+        get() = glucoseSource == "CGM"
+
     /**
      * Get ICR value for a specific time segment
      */

@@ -172,53 +172,45 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         _inputState.value = _inputState.value.copy(sportIntensityValue = value, sportIntensity = intensityString)
     }
 
-    fun autoFetchLiveCgmData() {
-        android.util.Log.d("CGM_Fetch", "--> 1. ViewModel requested data")
-
+    fun autoFetchLiveBgData(isCgmEnabled: Boolean) { // Pass the flag from your UI/Settings state
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val cgmData = com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip()
+                val currentTime = System.currentTimeMillis()
+                val twentyMinutesMs = 20 * 60 * 1000L
 
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    if (cgmData != null) {
-                        // 1. Calculate how old the reading is
-                        val currentTime = System.currentTimeMillis()
-                        val ageInMilliseconds = currentTime - cgmData.timestamp
-                        val twentyMinutesInMilliseconds = 20 * 60 * 1000L
+                if (isCgmEnabled) {
+                    // --- PATH A: CGM SENSOR MODE ---
+                    val cgmData = com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip()
 
-                        // 2. The 20-Minute Safety Gate
-                        if (ageInMilliseconds > twentyMinutesInMilliseconds) {
-                            val ageInMinutes = ageInMilliseconds / (60 * 1000)
-                            android.util.Log.w("CGM_Fetch", "--> BG is stale: $ageInMinutes mins old.")
-
-                            _inputState.update { current ->
-                                current.copy(warningMessage = "No recent BG (last reading was $ageInMinutes mins ago)")
-                            }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        if (cgmData != null && (currentTime - cgmData.timestamp) <= twentyMinutesMs) {
+                            _inputState.update { it.copy(
+                                bloodGlucose = cgmData.bgValue.toString(),
+                                cgmTrendString = cgmData.trendString,
+                                warningMessage = "Auto-filled from CGM!"
+                            )}
                         } else {
-                            android.util.Log.d("CGM_Fetch", "--> 4. ViewModel received recent BG: ${cgmData.bgValue}")
-
-                            // 3. Auto-fill the UI (IOB deliberately removed!)
-                            _inputState.update { current ->
-                                if (current.bloodGlucose.isBlank()) {
-                                    current.copy(
-                                        bloodGlucose = cgmData.bgValue.toString(),
-                                        cgmTrendString = cgmData.trendString,
-                                        warningMessage = "Auto-filled from CGM!"
-                                    )
-                                } else {
-                                    current
-                                }
-                            }
+                            _inputState.update { it.copy(warningMessage = "CGM data missing or stale.") }
                         }
-                    } else {
-                        android.util.Log.e("CGM_Fetch", "--> 4. ViewModel received NULL")
-                        _inputState.update { current ->
-                            current.copy(warningMessage = "Could not connect to CGM data.")
+                    }
+                } else {
+                    // --- PATH B: MANUAL FINGERSTICK MODE ---
+                    val lastManualLog = repository.getLatestManualBgLog()
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        if (lastManualLog != null && (currentTime - lastManualLog.timestamp) <= twentyMinutesMs) {
+                            _inputState.update { it.copy(
+                                bloodGlucose = lastManualLog.bloodGlucose.toInt().toString(),
+                                cgmTrendString = "", // No trend arrows for fingersticks!
+                                warningMessage = "Auto-filled from recent manual log."
+                            )}
+                        } else {
+                            _inputState.update { it.copy(warningMessage = "No recent fingerstick found (must be < 20 mins).") }
                         }
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("CGM_Fetch", "--> 4. ViewModel Coroutine Crash", e)
+                android.util.Log.e("BG_Fetch", "Error fetching BG data", e)
             }
         }
     }
