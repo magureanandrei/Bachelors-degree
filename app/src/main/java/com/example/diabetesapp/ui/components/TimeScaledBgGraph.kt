@@ -1,0 +1,289 @@
+package com.example.diabetesapp.ui.components
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Vaccines
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.diabetesapp.data.models.BolusLog
+import com.example.diabetesapp.utils.CgmReading
+import kotlin.collections.forEach
+
+@Composable
+fun TimeScaledBgGraph(
+    logs: List<BolusLog>,
+    cgmReadings: List<CgmReading> = emptyList(),
+    dayStartTimestamp: Long,
+    targetBg: Float = 100f,
+    hypoLimit: Float = 70f,
+    hyperLimit: Float = 180f,
+    modifier: Modifier = Modifier
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val scrollState = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
+    val bolusPainter = rememberVectorPainter(Icons.Default.AutoFixHigh)
+    val mealPainter = rememberVectorPainter(Icons.Default.Restaurant)
+    val manualInsulinPainter = rememberVectorPainter(Icons.Default.Vaccines)
+
+    // Auto-scroll to current time on load
+    LaunchedEffect(scrollState.maxValue) {
+        if (scrollState.maxValue > 0) {
+            val twentyFourHoursMs = 24 * 60 * 60 * 1000f
+            val currentTime = System.currentTimeMillis()
+            val elapsedMs = (currentTime - dayStartTimestamp).coerceIn(0L, twentyFourHoursMs.toLong())
+            val fraction = elapsedMs / twentyFourHoursMs
+            val totalWidthPx = with(density) { 1200.dp.toPx() }
+            val currentXPx = fraction * totalWidthPx
+            val viewportWidthPx = totalWidthPx - scrollState.maxValue
+            val targetScroll = (currentXPx - (viewportWidthPx / 2f)).toInt().coerceIn(0, scrollState.maxValue)
+            scrollState.scrollTo(targetScroll)
+        }
+    }
+
+    // Y-Axis Scale
+    val minBg = 40f
+    val maxBg = 350f
+    val rangeBg = maxBg - minBg
+    val topPadding = 40f
+    val bottomPadding = 120f
+
+    Row(modifier = modifier) {
+        // --- FIXED Y-AXIS (Pinned to the left) ---
+        Canvas(modifier = Modifier.width(42.dp).fillMaxHeight()) {
+            val graphHeight = size.height - bottomPadding - topPadding
+            fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
+
+            // BG Labels based on Safety Limits
+            val yLabels = listOf(hypoLimit, targetBg, hyperLimit, 300f)
+            yLabels.forEach { bg ->
+                drawText(
+                    textMeasurer = textMeasurer,
+                    text = "${bg.toInt()}",
+                    style = TextStyle(
+                        color = if (bg == targetBg) Color(0xFF00897B) else Color.Gray,
+                        fontSize = 10.sp,
+                        fontWeight = if (bg == targetBg) FontWeight.Bold else FontWeight.Medium
+                    ),
+                    topLeft = Offset(0f, bgToY(bg) - 15f)
+                )
+            }
+
+            // Swimlane Labels
+            val carbsY = size.height - 100f
+            val insulinY = size.height - 60f
+            drawText(textMeasurer = textMeasurer, text = "Carbs", style = TextStyle(color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold), topLeft = Offset(0f, carbsY - 15f))
+            drawText(textMeasurer = textMeasurer, text = "Ins", style = TextStyle(color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold), topLeft = Offset(0f, insulinY - 15f))
+        }
+
+        // --- SCROLLABLE GRAPH AREA ---
+        Box(modifier = Modifier.weight(1f).horizontalScroll(scrollState)) {
+            Canvas(modifier = Modifier.width(1200.dp).fillMaxHeight()) {
+                val graphWidth = size.width
+                val graphHeight = size.height - bottomPadding - topPadding
+                val twentyFourHoursMs = 24 * 60 * 60 * 1000f
+
+                fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
+                fun timeToX(timestamp: Long): Float = ((timestamp - dayStartTimestamp).coerceIn(0, twentyFourHoursMs.toLong()) / twentyFourHoursMs) * graphWidth
+
+                val carbsY = size.height - 100f
+                val insulinY = size.height - 60f
+
+                // 1. DYNAMIC TARGET RANGE SHADING
+                drawRect(
+                    color = Color(0xFFE8F5E9).copy(alpha = 0.7f),
+                    topLeft = Offset(0f, bgToY(hyperLimit)),
+                    size = Size(graphWidth, bgToY(hypoLimit) - bgToY(hyperLimit))
+                )
+
+                // 2. SAFETY HORIZONTAL LINES
+                listOf(hypoLimit, targetBg, hyperLimit).forEach { bg ->
+                    val isTarget = bg == targetBg
+                    val color = when (bg) {
+                        hypoLimit -> Color(0xFFE53935).copy(alpha = 0.4f)
+                        hyperLimit -> Color(0xFFFFB74D).copy(alpha = 0.4f)
+                        else -> Color(0xFFA5D6A7)
+                    }
+
+                    drawLine(
+                        color = color,
+                        start = Offset(0f, bgToY(bg)),
+                        end = Offset(graphWidth, bgToY(bg)),
+                        strokeWidth = if (isTarget) 3f else 2f,
+                        pathEffect = if (!isTarget) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+                    )
+                }
+
+                // 3. SWIMLANE DIVIDERS
+                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 120f), Offset(graphWidth, size.height - 120f), 2f)
+                drawLine(Color(0xFFF5F5F5), Offset(0f, size.height - 80f), Offset(graphWidth, size.height - 80f), 1f)
+                drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 40f), Offset(graphWidth, size.height - 40f), 2f)
+
+                // --- 3.5 CONTINUOUS CGM LINE ---
+                if (cgmReadings.isNotEmpty()) {
+                    val cgmPath = Path()
+                    var isFirstPoint = true
+                    var previousTimestamp = 0L
+                    val maxGapMs = 16 * 60 * 1000L
+
+                    val validReadings = cgmReadings.filter { it.bgValue > 0 }
+
+                    validReadings.forEach { reading ->
+                        val x = timeToX(reading.timestamp)
+                        val y = bgToY(reading.bgValue.toFloat().coerceIn(minBg, maxBg))
+
+                        val isGap = previousTimestamp > 0L && (reading.timestamp - previousTimestamp > maxGapMs)
+
+                        if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + twentyFourHoursMs.toLong()) {
+                            if (isFirstPoint || isGap) {
+                                cgmPath.moveTo(x, y)
+                                isFirstPoint = false
+                            } else {
+                                cgmPath.lineTo(x, y)
+                            }
+                        }
+                        previousTimestamp = reading.timestamp
+                    }
+
+                    // --- NEW: Dynamic Color Brush ---
+                    // 1. Find the exact pixel heights of your safety limits
+                    val hyperY = bgToY(hyperLimit)
+                    val hypoY = bgToY(hypoLimit)
+
+                    // 2. Convert those pixels into a percentage of the total canvas height (0.0 to 1.0)
+                    val hyperFraction = (hyperY / size.height).coerceIn(0f, 1f)
+                    val hypoFraction = (hypoY / size.height).coerceIn(0f, 1f)
+
+                    // 3. Create a brush that snaps to new colors exactly at those percentages
+                    val cgmBrush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0.0f to Color(0xFFFFB74D).copy(alpha = 0.9f),          // Orange/Yellow above target
+                        hyperFraction to Color(0xFFFFB74D).copy(alpha = 0.9f), // Keep Orange down to the hyper line
+                        hyperFraction + 0.001f to Color(0xFF00897B).copy(alpha = 0.8f), // Snap instantly to Teal
+                        hypoFraction to Color(0xFF00897B).copy(alpha = 0.8f),           // Keep Teal down to the hypo line
+                        hypoFraction + 0.001f to Color(0xFFE53935).copy(alpha = 0.9f),  // Snap instantly to Red
+                        1.0f to Color(0xFFE53935).copy(alpha = 0.9f),          // Keep Red down to the bottom
+                        startY = 0f,
+                        endY = size.height
+                    )
+
+                    // Paint the line onto the canvas using the brush instead of a solid color
+                    drawPath(
+                        path = cgmPath,
+                        brush = cgmBrush, // <-- Applying the magic brush here
+                        style = Stroke(
+                            width = 3.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+                }
+
+                // 4. SPORT DURATIONS
+                logs.filter { it.isSportModeActive && it.sportDuration != null }.forEach { sportLog ->
+                    val startX = timeToX(sportLog.timestamp)
+                    val endX = timeToX(sportLog.timestamp + (sportLog.sportDuration!!.toLong() * 60 * 1000L))
+                    val isPlanned = sportLog.status == "PLANNED"
+                    val shadeColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f) else Color(0xFF00695C).copy(alpha = 0.15f)
+
+                    drawRect(color = shadeColor, topLeft = Offset(startX, topPadding), size = Size(endX - startX, graphHeight))
+
+                    val borderColor = if (isPlanned) Color(0xFFFF9800) else Color(0xFF00695C)
+                    val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+
+                    drawLine(borderColor, Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
+                    drawLine(borderColor, Offset(endX, topPadding), Offset(endX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
+                }
+
+                // 5. X-AXIS TIME LABELS
+                val hourStrings = listOf("3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM", "12 AM", "3 AM")
+                for (i in 0..8) {
+                    // Multiplies i by 3 hours to match the labels above
+                    val xPos = timeToX(dayStartTimestamp + (i * 3 * 60 * 60 * 1000L))
+
+                    drawLine(Color(0xFFF5F5F5), Offset(xPos, topPadding), Offset(xPos, size.height - 40f), 1f)
+                    drawText(
+                        textMeasurer = textMeasurer,
+                        text = hourStrings[i],
+                        style = TextStyle(color = Color.Gray, fontSize = 10.sp),
+                        topLeft = Offset(xPos - 20f, size.height - 30f)
+                    )
+                }
+
+                // 6. TREND LINE & DOTS
+                val bgLogs = logs.filter { it.bloodGlucose > 0 }.sortedBy { it.timestamp }
+                if (bgLogs.isNotEmpty()) {
+                    val path = Path()
+                    val points = mutableListOf<Offset>()
+
+                    bgLogs.forEachIndexed { index, log ->
+                        val x = timeToX(log.timestamp)
+                        val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
+                        points.add(Offset(x, y))
+                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+
+                    drawPath(path = path, color = Color(0xFF00897B), style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+                    points.forEachIndexed { index, point ->
+                        val bg = bgLogs[index].bloodGlucose.toFloat()
+                        val dotColor = when {
+                            bg > hyperLimit -> Color(0xFFFFB74D) // High
+                            bg < hypoLimit -> Color(0xFFE53935)  // Low
+                            else -> Color(0xFF00897B)            // Target
+                        }
+                        drawCircle(color = Color.White, radius = 8f, center = point)
+                        drawCircle(color = dotColor, radius = 6f, center = point)
+                    }
+                }
+
+                // 7. SWIMLANE ICONS
+                logs.forEach { log ->
+                    val x = timeToX(log.timestamp)
+                    val iconRadius = 12f
+
+                    fun drawSwimlaneIcon(yPos: Float, painter: androidx.compose.ui.graphics.vector.VectorPainter, tint: Color) {
+                        drawCircle(color = Color.White, radius = iconRadius, center = Offset(x, yPos))
+                        drawCircle(color = tint.copy(alpha = 0.2f), radius = iconRadius, center = Offset(x, yPos), style = Stroke(width = 2f))
+                        translate(left = x - 8f, top = yPos - 8f) {
+                            with(painter) { draw(size = Size(16f, 16f), colorFilter = ColorFilter.tint(tint)) }
+                        }
+                    }
+
+                    if (log.carbs > 0) drawSwimlaneIcon(carbsY, mealPainter, Color(0xFFE91E63))
+                    if (log.administeredDose > 0 || log.eventType == "SMART_BOLUS") {
+                        val tint = if (log.eventType == "SMART_BOLUS") Color(0xFFFF9800) else Color(0xFF1976D2)
+                        val painter = if (log.eventType == "SMART_BOLUS") bolusPainter else manualInsulinPainter
+                        drawSwimlaneIcon(insulinY, painter, tint)
+                    }
+                }
+            }
+        }
+    }
+}

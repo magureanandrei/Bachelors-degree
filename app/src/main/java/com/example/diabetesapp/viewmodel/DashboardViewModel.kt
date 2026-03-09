@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
+import java.util.Calendar
 
 class DashboardViewModel(
     private val repository: BolusLogRepository,
@@ -89,6 +90,24 @@ class DashboardViewModel(
                 e.printStackTrace()
             }
         }
+    }
+
+    fun getLogicalDayStartTimestamp(): Long {
+        // Uses the phone's LOCAL timezone settings
+        val calendar = Calendar.getInstance()
+
+        // If current time is between Midnight and 3 AM,
+        // we want the graph to start at 3 AM of the PREVIOUS day.
+        if (calendar.get(Calendar.HOUR_OF_DAY) < 3) {
+            calendar.add(Calendar.DAY_OF_YEAR, -1)
+        }
+
+        calendar.set(Calendar.HOUR_OF_DAY, 3)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+
+        return calendar.timeInMillis
     }
 
     fun checkForPendingWorkouts(logs: List<BolusLog>) {
