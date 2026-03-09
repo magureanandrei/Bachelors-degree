@@ -175,30 +175,46 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
     fun autoFetchLiveCgmData() {
         android.util.Log.d("CGM_Fetch", "--> 1. ViewModel requested data")
 
-        // 1. Launch a background thread specifically for networking (Dispatchers.IO)
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                // 2. Make the HTTP call
-                val cgmData = getLatestBgFromXDrip()
+                val cgmData = com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip()
 
-                // 3. Switch back to the Main thread to update the UI State
-                withContext(Dispatchers.Main) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     if (cgmData != null) {
-                        android.util.Log.d("CGM_Fetch", "--> 4. ViewModel received BG: ${cgmData.bgValue}")
-                        _inputState.update { current ->
-                            if (current.bloodGlucose.isBlank()) {
-                                current.copy(
-                                    bloodGlucose = cgmData.bgValue.toString(),
-                                    cgmTrendString = cgmData.trendString,
-                                    activeInsulin = cgmData.iob?.toString() ?: current.activeInsulin,
-                                    warningMessage = "Auto-filled BG & IOB from pump!"
-                                )
-                            } else {
-                                current
+                        // 1. Calculate how old the reading is
+                        val currentTime = System.currentTimeMillis()
+                        val ageInMilliseconds = currentTime - cgmData.timestamp
+                        val twentyMinutesInMilliseconds = 20 * 60 * 1000L
+
+                        // 2. The 20-Minute Safety Gate
+                        if (ageInMilliseconds > twentyMinutesInMilliseconds) {
+                            val ageInMinutes = ageInMilliseconds / (60 * 1000)
+                            android.util.Log.w("CGM_Fetch", "--> BG is stale: $ageInMinutes mins old.")
+
+                            _inputState.update { current ->
+                                current.copy(warningMessage = "No recent BG (last reading was $ageInMinutes mins ago)")
+                            }
+                        } else {
+                            android.util.Log.d("CGM_Fetch", "--> 4. ViewModel received recent BG: ${cgmData.bgValue}")
+
+                            // 3. Auto-fill the UI (IOB deliberately removed!)
+                            _inputState.update { current ->
+                                if (current.bloodGlucose.isBlank()) {
+                                    current.copy(
+                                        bloodGlucose = cgmData.bgValue.toString(),
+                                        cgmTrendString = cgmData.trendString,
+                                        warningMessage = "Auto-filled from CGM!"
+                                    )
+                                } else {
+                                    current
+                                }
                             }
                         }
                     } else {
                         android.util.Log.e("CGM_Fetch", "--> 4. ViewModel received NULL")
+                        _inputState.update { current ->
+                            current.copy(warningMessage = "Could not connect to CGM data.")
+                        }
                     }
                 }
             } catch (e: Exception) {

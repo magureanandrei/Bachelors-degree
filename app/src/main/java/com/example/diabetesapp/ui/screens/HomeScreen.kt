@@ -294,28 +294,53 @@ fun TimeScaledBgGraph(
                 if (cgmReadings.isNotEmpty()) {
                     val cgmPath = Path()
                     var isFirstPoint = true
+                    var previousTimestamp = 0L
+                    val maxGapMs = 16 * 60 * 1000L
+
                     val validReadings = cgmReadings.filter { it.bgValue > 0 }
 
                     validReadings.forEach { reading ->
-                        // Use your existing math functions to perfectly align the dots!
                         val x = timeToX(reading.timestamp)
                         val y = bgToY(reading.bgValue.toFloat().coerceIn(minBg, maxBg))
 
-                        // Only draw if the timestamp falls within the current 24-hour window
+                        val isGap = previousTimestamp > 0L && (reading.timestamp - previousTimestamp > maxGapMs)
+
                         if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + twentyFourHoursMs.toLong()) {
-                            if (isFirstPoint) {
+                            if (isFirstPoint || isGap) {
                                 cgmPath.moveTo(x, y)
                                 isFirstPoint = false
                             } else {
                                 cgmPath.lineTo(x, y)
                             }
                         }
+                        previousTimestamp = reading.timestamp
                     }
 
-                    // Paint the line onto the canvas
+                    // --- NEW: Dynamic Color Brush ---
+                    // 1. Find the exact pixel heights of your safety limits
+                    val hyperY = bgToY(hyperLimit)
+                    val hypoY = bgToY(hypoLimit)
+
+                    // 2. Convert those pixels into a percentage of the total canvas height (0.0 to 1.0)
+                    val hyperFraction = (hyperY / size.height).coerceIn(0f, 1f)
+                    val hypoFraction = (hypoY / size.height).coerceIn(0f, 1f)
+
+                    // 3. Create a brush that snaps to new colors exactly at those percentages
+                    val cgmBrush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0.0f to Color(0xFFFFB74D).copy(alpha = 0.9f),          // Orange/Yellow above target
+                        hyperFraction to Color(0xFFFFB74D).copy(alpha = 0.9f), // Keep Orange down to the hyper line
+                        hyperFraction + 0.001f to Color(0xFF00897B).copy(alpha = 0.8f), // Snap instantly to Teal
+                        hypoFraction to Color(0xFF00897B).copy(alpha = 0.8f),           // Keep Teal down to the hypo line
+                        hypoFraction + 0.001f to Color(0xFFE53935).copy(alpha = 0.9f),  // Snap instantly to Red
+                        1.0f to Color(0xFFE53935).copy(alpha = 0.9f),          // Keep Red down to the bottom
+                        startY = 0f,
+                        endY = size.height
+                    )
+
+                    // Paint the line onto the canvas using the brush instead of a solid color
                     drawPath(
                         path = cgmPath,
-                        color = Color(0xFF00897B).copy(alpha = 0.6f), // Slightly transparent teal
+                        brush = cgmBrush, // <-- Applying the magic brush here
                         style = Stroke(
                             width = 3.dp.toPx(),
                             cap = StrokeCap.Round,
