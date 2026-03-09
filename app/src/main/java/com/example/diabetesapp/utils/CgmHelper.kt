@@ -18,10 +18,10 @@ data class CgmReading(
 object CgmHelper {
 
     // ---------------------------------------------------------------------------------
-    // FUNCTION 1: Gets the single latest reading for the Smart Bolus calculator
+    // FUNCTION 1: Gets the single latest reading for the Smart Bolus calculator & Widget
     // ---------------------------------------------------------------------------------
     fun getLatestBgFromXDrip(): CgmReading? {
-        Log.d("CGM_Fetch", "--> 2. CgmHelper started. Attempting local Pebble endpoint...")
+        Log.d("CGM_Fetch", "--> Attempting to fetch rich pebble data...")
 
         return try {
             val url = URL("http://127.0.0.1:17580/pebble")
@@ -36,8 +36,6 @@ object CgmHelper {
                 val reader = BufferedReader(InputStreamReader(connection.inputStream))
                 val response = reader.readText()
                 reader.close()
-
-                Log.d("CGM_Fetch", "--> 3. SUCCESS! Raw JSON: $response")
 
                 val jsonObject = JSONObject(response)
                 val bgsArray = jsonObject.optJSONArray("bgs")
@@ -78,19 +76,19 @@ object CgmHelper {
                             iob = iobValue
                         )
                     } else {
-                        Log.e("CGM_Fetch", "--> 3. Error: Could not parse SGV into a number.")
+                        Log.e("CGM_Fetch", "--> Error: Could not parse SGV into a number.")
                         return null
                     }
                 } else {
-                    Log.e("CGM_Fetch", "--> 3. JSON 'bgs' Array was empty.")
+                    Log.e("CGM_Fetch", "--> JSON 'bgs' Array was empty.")
                     null
                 }
             } else {
-                Log.e("CGM_Fetch", "--> 3. Server returned HTTP ${connection.responseCode}")
+                Log.e("CGM_Fetch", "--> Server returned HTTP ${connection.responseCode}")
                 null
             }
         } catch (e: Exception) {
-            Log.e("CGM_Fetch", "--> 3. CRITICAL CRASH: ${e.message}", e)
+            Log.e("CGM_Fetch", "--> CRITICAL CRASH: ${e.message}", e)
             null
         }
     }

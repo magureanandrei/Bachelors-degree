@@ -28,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.repository.BolusLogRepository
+import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.viewmodel.BolusInputState
 import com.example.diabetesapp.viewmodel.CalculateBolusViewModel
 import com.example.diabetesapp.viewmodel.CalculateBolusViewModelFactory
@@ -41,9 +42,10 @@ fun CalculateBolusScreen(
     val context = LocalContext.current
     val database = remember { BolusDatabase.getDatabase(context) }
     val repository = remember { BolusLogRepository(database.bolusLogDao()) }
+    val settingsRepository = remember { BolusSettingsRepository.getInstance(context) }
 
     val viewModel: CalculateBolusViewModel = viewModel(
-        factory = CalculateBolusViewModelFactory(repository)
+        factory = CalculateBolusViewModelFactory(repository, settingsRepository)
     )
 
     val inputState by viewModel.inputState.collectAsState()
@@ -120,7 +122,7 @@ fun CalculatorView(
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
-        viewModel.autoFetchLiveCgmData()
+        viewModel.autoFetchLiveBgData()
     }
 
     // Parse the current planned time to set the picker's initial position

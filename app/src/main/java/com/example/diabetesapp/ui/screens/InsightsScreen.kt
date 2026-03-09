@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun StatsScreen(modifier: Modifier = Modifier) {
+fun InsightsScreen(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()

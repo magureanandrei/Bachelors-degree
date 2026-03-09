@@ -9,13 +9,16 @@ import com.example.diabetesapp.data.models.CgmTrend
 import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
+import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip
 import com.example.diabetesapp.utils.WorkoutNotificationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,14 +73,19 @@ data class BolusInputState(
     val selectedFactor: String = "None"
 )
 
-class CalculateBolusViewModel(private val repository: BolusLogRepository) : ViewModel() {
+class CalculateBolusViewModel(
+    private val repository: BolusLogRepository,
+    private val settingsRepository: BolusSettingsRepository // <-- 1. Inject the real settings here!
+) : ViewModel() {
+
     private val _inputState = MutableStateFlow(BolusInputState())
     val inputState: StateFlow<BolusInputState> = _inputState.asStateFlow()
 
-    private val dummySettings = BolusSettings(
-        icrMorning = 10f, icrNoon = 10f, icrEvening = 10f, icrNight = 10f,
-        isfMorning = 50f, isfNoon = 50f, isfEvening = 50f, isfNight = 50f,
-        targetBG = 100f
+    // 2. Grab the live settings instead of dummy settings
+    val settings: StateFlow<BolusSettings> = settingsRepository.settings.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        BolusSettings()
     )
 
     init { updateCurrentDateTime() }
@@ -172,45 +180,59 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         _inputState.value = _inputState.value.copy(sportIntensityValue = value, sportIntensity = intensityString)
     }
 
-    fun autoFetchLiveBgData(isCgmEnabled: Boolean) { // Pass the flag from your UI/Settings state
+    fun autoFetchLiveBgData() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val currentTime = System.currentTimeMillis()
                 val twentyMinutesMs = 20 * 60 * 1000L
+                val isCgmEnabled = settings.value.glucoseSource == "CGM"
+
+                var successfulFetch = false
 
                 if (isCgmEnabled) {
-                    // --- PATH A: CGM SENSOR MODE ---
                     val cgmData = com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip()
 
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        if (cgmData != null && (currentTime - cgmData.timestamp) <= twentyMinutesMs) {
+                    if (cgmData != null && (currentTime - cgmData.timestamp) <= twentyMinutesMs) {
+                        successfulFetch = true
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                             _inputState.update { it.copy(
                                 bloodGlucose = cgmData.bgValue.toString(),
                                 cgmTrendString = cgmData.trendString,
                                 warningMessage = "Auto-filled from CGM!"
                             )}
-                        } else {
-                            _inputState.update { it.copy(warningMessage = "CGM data missing or stale.") }
                         }
                     }
                 } else {
-                    // --- PATH B: MANUAL FINGERSTICK MODE ---
                     val lastManualLog = repository.getLatestManualBgLog()
 
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        if (lastManualLog != null && (currentTime - lastManualLog.timestamp) <= twentyMinutesMs) {
+                    if (lastManualLog != null && (currentTime - lastManualLog.timestamp) <= twentyMinutesMs) {
+                        successfulFetch = true
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                             _inputState.update { it.copy(
                                 bloodGlucose = lastManualLog.bloodGlucose.toInt().toString(),
-                                cgmTrendString = "", // No trend arrows for fingersticks!
+                                cgmTrendString = "",
                                 warningMessage = "Auto-filled from recent manual log."
                             )}
-                        } else {
-                            _inputState.update { it.copy(warningMessage = "No recent fingerstick found (must be < 20 mins).") }
                         }
                     }
                 }
+
+                // --- NEW: The "No Reading" Fallback ---
+                if (!successfulFetch) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        _inputState.update { it.copy(
+                            bloodGlucose = "", // Clear it so they don't use old data
+                            cgmTrendString = "",
+                            warningMessage = "⚠️ No recent reading found (last 20m). Please check sensor or fingerstick."
+                        )}
+                    }
+                }
+
             } catch (e: Exception) {
                 android.util.Log.e("BG_Fetch", "Error fetching BG data", e)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    _inputState.update { it.copy(warningMessage = "Error connecting to glucose source.") }
+                }
             }
         }
     }
@@ -241,7 +263,7 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         val state = _inputState.value
         val context = PatientContext(
             therapyType = TherapyType.MDI_PENS,
-            bolusSettings = dummySettings,
+            bolusSettings = settings.value, // Use the live settings from the repository
             currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
             hasCGM = false,
             cgmTrend = CgmTrend.NONE,
@@ -259,9 +281,11 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         )
 
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
+        val currentSettings = settings.value // <-- Grab the real, live settings from the database
 
         _inputState.value = _inputState.value.copy(
-            standardDose = (context.plannedCarbs / dummySettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - dummySettings.targetBG) / dummySettings.getCurrentIsf()),
+            // Use currentSettings instead of dummySettings!
+            standardDose = (context.plannedCarbs / currentSettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf()),
             calculatedDose = decision.suggestedInsulinDose,
             userAdjustedDose = decision.suggestedInsulinDose,
             sportReductionLog = decision.clinicalRationale,
@@ -360,10 +384,14 @@ class CalculateBolusViewModel(private val repository: BolusLogRepository) : View
         )
     }
 }
-class CalculateBolusViewModelFactory(private val repository: BolusLogRepository) : ViewModelProvider.Factory {
+class CalculateBolusViewModelFactory(
+    private val repository: BolusLogRepository,
+    private val settingsRepository: BolusSettingsRepository // <-- 1. Add settings repo here
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CalculateBolusViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST") return CalculateBolusViewModel(repository) as T
+            @Suppress("UNCHECKED_CAST")
+            return CalculateBolusViewModel(repository, settingsRepository) as T // <-- 2. Pass it to the ViewModel
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

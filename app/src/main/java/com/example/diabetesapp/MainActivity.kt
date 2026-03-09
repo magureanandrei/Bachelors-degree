@@ -86,7 +86,7 @@ fun MainScreen() {
                 onNavigateToLogReading = { navigateTo("log_reading") }
             )
             "history" -> HistoryScreen(modifier = Modifier.padding(innerPadding))
-            "stats" -> StatsScreen(modifier = Modifier.padding(innerPadding))
+            "stats" -> InsightsScreen(modifier = Modifier.padding(innerPadding))
             "education" -> EducationScreen(modifier = Modifier.padding(innerPadding)) // NEW
             "menu" -> MenuScreen(
                 modifier = Modifier.padding(innerPadding),

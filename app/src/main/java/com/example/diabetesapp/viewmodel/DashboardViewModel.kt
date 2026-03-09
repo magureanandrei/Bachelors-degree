@@ -42,6 +42,10 @@ class DashboardViewModel(
         BolusSettings()
     )
 
+    // --- NEW: Single Rich Reading for the Big Widget ---
+    private val _latestReading = MutableStateFlow<CgmReading?>(null)
+    val latestReading: StateFlow<CgmReading?> = _latestReading.asStateFlow()
+
     // --- NEW: CGM Graph Data State ---
     private val _cgmReadings = MutableStateFlow<List<CgmReading>>(emptyList())
     val cgmReadings: StateFlow<List<CgmReading>> = _cgmReadings.asStateFlow()
@@ -49,16 +53,37 @@ class DashboardViewModel(
     // State to trigger the Verification Modal
     val unverifiedWorkout = MutableStateFlow<BolusLog?>(null)
 
-    // --- NEW: Background Fetcher for the 24-Hour Graph ---
-    fun fetchCgmHistory() {
+    // --- UPDATED: Background Fetcher for Dashboard Data ---
+    fun fetchDashboardData(isCgmEnabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Fetch the array on the background thread
-                val history = CgmHelper.getBgHistoryFromXDrip()
+                if (isCgmEnabled) {
+                    // PATH A: Live Sensor Mode
+                    val latest = CgmHelper.getLatestBgFromXDrip()
+                    val history = CgmHelper.getBgHistoryFromXDrip()
 
-                // Switch back to Main thread to update the UI State
-                withContext(Dispatchers.Main) {
-                    _cgmReadings.value = history
+                    withContext(Dispatchers.Main) {
+                        _latestReading.value = latest
+                        _cgmReadings.value = history
+                    }
+                } else {
+                    // PATH B: Manual Fingerstick Mode
+                    val lastManualLog = repository.getLatestManualBgLog()
+
+                    withContext(Dispatchers.Main) {
+                        if (lastManualLog != null) {
+                            _latestReading.value = CgmReading(
+                                timestamp = lastManualLog.timestamp,
+                                bgValue = lastManualLog.bloodGlucose.toInt(),
+                                trendString = "", // No trend arrows for fingersticks!
+                                iob = null        // No pump IOB in manual mode
+                            )
+                        } else {
+                            _latestReading.value = null
+                        }
+                        // Clear the continuous line from the graph in manual mode
+                        _cgmReadings.value = emptyList()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

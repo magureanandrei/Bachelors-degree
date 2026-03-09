@@ -47,8 +47,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
+import com.example.diabetesapp.ui.components.CurrentBgWidget
 import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import com.example.diabetesapp.utils.CgmReading
+import kotlinx.coroutines.isActive
 
 @Composable
 fun HomeScreen(
@@ -65,7 +67,6 @@ fun HomeScreen(
     val viewModel: DashboardViewModel = viewModel(
         factory = DashboardViewModelFactory(logRepository, settingsRepository)
     )
-
     val allLogs by viewModel.allLogs.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
@@ -84,8 +85,22 @@ fun HomeScreen(
     val cgmReadings by viewModel.cgmReadings.collectAsState()
 
     // Fetch the history when the logical day changes (or screen opens)
-    LaunchedEffect(logicalDayStart) {
-        viewModel.fetchCgmHistory()
+    val isCgmEnabled = settings.glucoseSource == "CGM"
+    val latestReading by viewModel.latestReading.collectAsState()
+
+    // --- The 5-Minute Polling Engine ---
+    LaunchedEffect(logicalDayStart, settings.glucoseSource) {
+        // while(isActive) keeps this loop running endlessly in the background
+        // as long as the Home Screen is open.
+        while (isActive) {
+
+            // Trigger the fetch we built in the ViewModel
+            viewModel.fetchDashboardData(isCgmEnabled = isCgmEnabled)
+
+            // Wait for 5 minutes (300,000 milliseconds)
+            // This is a "suspending" delay, meaning it won't freeze your UI
+            kotlinx.coroutines.delay(5 * 60 * 1000L)
+        }
     }
 
     Column(
@@ -107,12 +122,24 @@ fun HomeScreen(
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Today's Glucose Trends", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
-                Spacer(modifier = Modifier.height(12.dp))
+                Text("Glucose Monitoring", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
 
-                // The 'key' ensures that if Target/High/Low change, the Canvas RE-DRAWS immediately
+                // 1. Give the widget some breathing room at the top of the card
+                if (isCgmEnabled) {
+                    CurrentBgWidget(
+                        latestReading = latestReading,
+                        isCgmEnabled = true,
+                        hypoLimit = settings.hypoLimit,
+                        hyperLimit = settings.hyperLimit,
+                        modifier = Modifier.fillMaxWidth() // No extra padding needed here, Column handles it
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // 2. The Graph now has its own clean space
                 key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
-                    Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp)) { // Slightly taller for clarity
                         TimeScaledBgGraph(
                             logs = todaysLogs,
                             cgmReadings = cgmReadings,
