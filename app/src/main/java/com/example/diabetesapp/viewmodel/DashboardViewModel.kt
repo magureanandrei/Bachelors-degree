@@ -1,5 +1,6 @@
 package com.example.diabetesapp.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -18,11 +19,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
 import java.util.Calendar
+import java.util.Date
 
 class DashboardViewModel(
     private val repository: BolusLogRepository,
@@ -47,6 +50,9 @@ class DashboardViewModel(
     private val _latestReading = MutableStateFlow<CgmReading?>(null)
     val latestReading: StateFlow<CgmReading?> = _latestReading.asStateFlow()
 
+    private val _graphEvents = MutableStateFlow<List<BolusLog>>(emptyList())
+    val graphEvents: StateFlow<List<BolusLog>> = _graphEvents.asStateFlow()
+
     // --- NEW: CGM Graph Data State ---
     private val _cgmReadings = MutableStateFlow<List<CgmReading>>(emptyList())
     val cgmReadings: StateFlow<List<CgmReading>> = _cgmReadings.asStateFlow()
@@ -54,59 +60,95 @@ class DashboardViewModel(
     // State to trigger the Verification Modal
     val unverifiedWorkout = MutableStateFlow<BolusLog?>(null)
 
+    // StateFlow that holds the logical day start timestamp (3 AM cutoff)
+    private val _logicalDayStart = MutableStateFlow(getLogicalDayStartTimestamp())
+    val logicalDayStartFlow: StateFlow<Long> = _logicalDayStart.asStateFlow()
+
+    init {
+        // Keep _graphEvents in sync with local logs automatically
+        viewModelScope.launch {
+            allLogs.collect { logs ->
+                val dayStart = getLogicalDayStartTimestamp()
+                val todayLocal = logs.filter { it.timestamp >= dayStart }.sortedBy { it.timestamp }
+                // Merge with any existing xDrip treatments already in _graphEvents
+                val existing = _graphEvents.value.filter { it.id == 0 } // xDrip logs have id=0
+                _graphEvents.value = (todayLocal + existing)
+                    .distinctBy { it.timestamp }
+                    .sortedBy { it.timestamp }
+            }
+        }
+    }
+
+
+    val todaysTreatments: StateFlow<List<BolusLog>> = _graphEvents.asStateFlow()
+        .combine(logicalDayStartFlow) { events, dayStart ->
+            events.filter { it.timestamp >= dayStart && (it.carbs > 0 || it.administeredDose >= 1.5f) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+
     // --- UPDATED: Background Fetcher for Dashboard Data ---
     fun fetchDashboardData(isCgmEnabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 if (isCgmEnabled) {
-                    // PATH A: Live Sensor Mode
                     val latest = CgmHelper.getLatestBgFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
+
+                    val dayStart = getLogicalDayStartTimestamp()
+
+                    val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
+                    Log.d("DashboardVM", "dayStart=$dayStart (${Date(dayStart)})")
+                    xdripTreatments.forEach {
+                        Log.d("DashboardVM", "  raw xDrip: ts=${it.timestamp} (${Date(it.timestamp)}) carbs=${it.carbs} insulin=${it.administeredDose}")
+                    }
+                    val todayXDrip = xdripTreatments
+                        .filter { it.timestamp >= dayStart }
+                        .map { treatment ->
+                            treatment.copy(
+                                bloodGlucose = findClosestBg(treatment.timestamp, history)
+                            )
+                        }
+
 
                     withContext(Dispatchers.Main) {
                         _latestReading.value = latest
                         _cgmReadings.value = history
+
+                        val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
+                        val combined = (localLogs + todayXDrip)
+                            .distinctBy { it.timestamp }
+                            .sortedBy { it.timestamp }
+
+                        Log.d("DashboardVM", "Graph events: ${combined.size} total (${localLogs.size} local + ${todayXDrip.size} xDrip)")
+                        _graphEvents.value = combined
                     }
                 } else {
-                    // PATH B: Manual Fingerstick Mode
-                    val lastManualLog = repository.getLatestManualBgLog()
-
+                    val dayStart = getLogicalDayStartTimestamp()
+                    val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
                     withContext(Dispatchers.Main) {
-                        if (lastManualLog != null) {
-                            _latestReading.value = CgmReading(
-                                timestamp = lastManualLog.timestamp,
-                                bgValue = lastManualLog.bloodGlucose.toInt(),
-                                trendString = "", // No trend arrows for fingersticks!
-                                iob = null        // No pump IOB in manual mode
-                            )
-                        } else {
-                            _latestReading.value = null
-                        }
-                        // Clear the continuous line from the graph in manual mode
-                        _cgmReadings.value = emptyList()
+                        _graphEvents.value = localLogs.sortedBy { it.timestamp }
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("DashboardVM", "Fetch failed", e)
             }
         }
     }
 
+    private fun findClosestBg(timestamp: Long, cgmReadings: List<CgmReading>): Double {
+        val windowMs = 10 * 60 * 1000L
+        return cgmReadings
+            .filter { Math.abs(it.timestamp - timestamp) <= windowMs }
+            .minByOrNull { Math.abs(it.timestamp - timestamp) }
+            ?.bgValue?.toDouble() ?: 0.0
+    }
+
     fun getLogicalDayStartTimestamp(): Long {
-        // Uses the phone's LOCAL timezone settings
         val calendar = Calendar.getInstance()
-
-        // If current time is between Midnight and 3 AM,
-        // we want the graph to start at 3 AM of the PREVIOUS day.
-        if (calendar.get(Calendar.HOUR_OF_DAY) < 3) {
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
-        }
-
-        calendar.set(Calendar.HOUR_OF_DAY, 3)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
-
         return calendar.timeInMillis
     }
 

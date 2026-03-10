@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Bloodtype
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.room.jarjarred.org.antlr.v4.codegen.model.Sync
 import com.example.diabetesapp.data.models.BolusLog
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -35,11 +37,14 @@ import java.util.Locale
 fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = formatter.format(Date(log.timestamp))
+    val isAutoEntry = log.notes == "Auto-entry via CareLink"
 
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isAutoEntry) Color(0xFFF5FFFE) else Color.White
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         shape = RoundedCornerShape(8.dp)
     ) {
@@ -61,17 +66,22 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
                     log.administeredDose > 0 -> Icon(Icons.Default.Vaccines, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
                     else -> Icon(Icons.Default.Bloodtype, null, tint = Color(0xFFD32F2F), modifier = Modifier.size(16.dp))
                 }
+                // Auto-entry sync badge
+                if (isAutoEntry) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        Icons.Default.Sync,
+                        contentDescription = "Auto-entry",
+                        tint = Color(0xFF00897B),
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
             }
 
-            // --- THE DYNAMIC UI SWITCH ---
             if (log.eventType == "SPORT") {
-                // SPORT-ONLY DESIGN
-                // Middle: Text aligned with BG columns of other cards
                 Row(modifier = Modifier.weight(1.5f)) {
                     Text("${log.sportDuration?.toInt()}m ${log.sportType}", fontSize = 13.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
-
-                // Right: Badge pushed to the end
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
                     if (log.status == "PLANNED") {
                         Text("Pending", fontSize = 11.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, modifier = Modifier
@@ -84,21 +94,27 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
                     }
                 }
             } else {
-                // STANDARD DIABETES DESIGN
-                // Middle: BG & Carbs
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1.5f)) {
                     if (log.bloodGlucose > 0) {
                         val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
                         Text("${log.bloodGlucose}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
-                    } else { Text("-", color = Color.LightGray) }
-
+                    } else {
+                        // Show "Auto-entry" label where BG would normally be
+                        if (isAutoEntry) {
+                            Text("auto", fontSize = 11.sp, color = Color(0xFF00897B),
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                        } else {
+                            Text("-", color = Color.LightGray)
+                        }
+                    }
                     if (log.carbs > 0) { Text("${log.carbs}g", fontSize = 14.sp, color = Color.Gray) }
                 }
 
-                // Right: Insulin
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
                     if (log.administeredDose > 0) {
-                        Text("${String.format(Locale.US, "%.1f", log.administeredDose)}U", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        Text("${String.format(Locale.US, "%.1f", log.administeredDose)}U",
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                            color = if (isAutoEntry) Color(0xFF00897B) else Color(0xFF2E7D32))
                     } else { Text("-", color = Color.LightGray) }
                 }
             }

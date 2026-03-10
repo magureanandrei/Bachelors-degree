@@ -43,6 +43,7 @@ fun TimeScaledBgGraph(
     targetBg: Float = 100f,
     hypoLimit: Float = 70f,
     hyperLimit: Float = 180f,
+    isCgmEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -222,7 +223,7 @@ fun TimeScaledBgGraph(
                 }
 
                 // 5. X-AXIS TIME LABELS
-                val hourStrings = listOf("3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM", "12 AM", "3 AM")
+                val hourStrings = listOf("12 AM", "3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM", "12 AM")
                 for (i in 0..8) {
                     // Multiplies i by 3 hours to match the labels above
                     val xPos = timeToX(dayStartTimestamp + (i * 3 * 60 * 60 * 1000L))
@@ -237,42 +238,56 @@ fun TimeScaledBgGraph(
                 }
 
                 // 6. TREND LINE & DOTS
-                val bgLogs = logs.filter { it.bloodGlucose > 0 }.sortedBy { it.timestamp }
-                if (bgLogs.isNotEmpty()) {
-                    val path = Path()
-                    val points = mutableListOf<Offset>()
+                if (!isCgmEnabled) {
+                    val bgLogs = logs.filter {
+                        it.bloodGlucose > 0 && it.notes != "Auto-entry via CareLink"
+                    }.sortedBy { it.timestamp }
 
-                    bgLogs.forEachIndexed { index, log ->
-                        val x = timeToX(log.timestamp)
-                        val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
-                        points.add(Offset(x, y))
-                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                    }
+                    if (bgLogs.isNotEmpty()) {
+                        val path = Path()
+                        val points = mutableListOf<Offset>()
 
-                    drawPath(path = path, color = Color(0xFF00897B), style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-                    points.forEachIndexed { index, point ->
-                        val bg = bgLogs[index].bloodGlucose.toFloat()
-                        val dotColor = when {
-                            bg > hyperLimit -> Color(0xFFFFB74D) // High
-                            bg < hypoLimit -> Color(0xFFE53935)  // Low
-                            else -> Color(0xFF00897B)            // Target
+                        bgLogs.forEachIndexed { index, log ->
+                            val x = timeToX(log.timestamp)
+                            val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
+                            points.add(Offset(x, y))
+                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                         }
-                        drawCircle(color = Color.White, radius = 8f, center = point)
-                        drawCircle(color = dotColor, radius = 6f, center = point)
+
+                        drawPath(
+                            path = path,
+                            color = Color(0xFF00897B),
+                            style = Stroke(
+                                width = 4f,
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+
+                        points.forEachIndexed { index, point ->
+                            val bg = bgLogs[index].bloodGlucose.toFloat()
+                            val dotColor = when {
+                                bg > hyperLimit -> Color(0xFFFFB74D) // High
+                                bg < hypoLimit -> Color(0xFFE53935)  // Low
+                                else -> Color(0xFF00897B)            // Target
+                            }
+                            drawCircle(color = Color.White, radius = 8f, center = point)
+                            drawCircle(color = dotColor, radius = 6f, center = point)
+                        }
                     }
                 }
 
                 // 7. SWIMLANE ICONS
-                logs.forEach { log ->
+                val dayEndTimestamp = dayStartTimestamp + twentyFourHoursMs.toLong()
+                logs.filter { it.timestamp in dayStartTimestamp..dayEndTimestamp }.forEach { log ->
                     val x = timeToX(log.timestamp)
-                    val iconRadius = 12f
+                    val iconRadius = 16f
 
                     fun drawSwimlaneIcon(yPos: Float, painter: androidx.compose.ui.graphics.vector.VectorPainter, tint: Color) {
                         drawCircle(color = Color.White, radius = iconRadius, center = Offset(x, yPos))
                         drawCircle(color = tint.copy(alpha = 0.2f), radius = iconRadius, center = Offset(x, yPos), style = Stroke(width = 2f))
-                        translate(left = x - 8f, top = yPos - 8f) {
-                            with(painter) { draw(size = Size(16f, 16f), colorFilter = ColorFilter.tint(tint)) }
+                        translate(left = x - 11f, top = yPos - 11f) {
+                            with(painter) { draw(size = Size(22f, 22f), colorFilter = ColorFilter.tint(tint)) }
                         }
                     }
 

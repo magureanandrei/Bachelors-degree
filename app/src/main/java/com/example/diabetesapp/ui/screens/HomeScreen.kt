@@ -1,5 +1,6 @@
 package com.example.diabetesapp.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -72,14 +73,15 @@ fun HomeScreen(
     val viewModel: DashboardViewModel = viewModel(
         factory = DashboardViewModelFactory(logRepository, settingsRepository)
     )
+
     val allLogs by viewModel.allLogs.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
     // Re-calculate day start when logs change
     val logicalDayStart = remember(allLogs) { viewModel.getLogicalDayStartTimestamp() }
-    val todaysLogs = allLogs.filter { it.timestamp >= logicalDayStart }.sortedBy { it.timestamp }
-
+    val todaysLogs by viewModel.graphEvents.collectAsState()
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
+    val graphEvents by viewModel.graphEvents.collectAsState()
 
 
     var selectedLogForModal by remember { mutableStateOf<BolusLog?>(null) }
@@ -105,6 +107,12 @@ fun HomeScreen(
             // Wait for 5 minutes (300,000 milliseconds)
             // This is a "suspending" delay, meaning it won't freeze your UI
             kotlinx.coroutines.delay(5 * 60 * 1000L)
+        }
+    }
+    LaunchedEffect(graphEvents) {
+        Log.d("GraphDebug", "graphEvents count: ${graphEvents.size}")
+        graphEvents.forEach {
+            Log.d("GraphDebug", "  event: ts=${it.timestamp} carbs=${it.carbs} insulin=${it.administeredDose} type=${it.eventType}")
         }
     }
 
@@ -146,14 +154,15 @@ fun HomeScreen(
                 key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
                     Box(modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)) { // Slightly taller for clarity
+                        .height(200.dp)) {
                         TimeScaledBgGraph(
-                            logs = todaysLogs,
+                            logs = graphEvents,
                             cgmReadings = cgmReadings,
                             dayStartTimestamp = logicalDayStart,
                             targetBg = settings.targetBG,
                             hypoLimit = settings.hypoLimit,
                             hyperLimit = settings.hyperLimit,
+                            isCgmEnabled = isCgmEnabled,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
