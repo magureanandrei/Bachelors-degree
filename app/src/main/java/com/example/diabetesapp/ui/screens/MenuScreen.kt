@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.diabetesapp.ui.components.MenuOptionCard
 
 @Composable
 fun MenuScreen(
@@ -69,48 +70,5 @@ fun MenuScreen(
             icon = Icons.Default.Watch,
             onClick = { /* TODO in the future */ }
         )
-    }
-}
-
-@Composable
-fun MenuOptionCard(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = Color(0xFF00897B),
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                    Text(text = subtitle, fontSize = 12.sp, color = Color.Gray)
-                }
-            }
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = "Go",
-                tint = Color.LightGray
-            )
-        }
     }
 }
