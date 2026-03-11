@@ -62,7 +62,7 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
                 when {
                     log.eventType == "SPORT" -> Icon(Icons.Default.DirectionsRun, null, tint = if(log.status == "PLANNED") Color(0xFFFF9800) else Color(0xFF00695C), modifier = Modifier.size(16.dp))
                     log.eventType == "SMART_BOLUS" -> Icon(Icons.Default.AutoFixHigh, null, tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
-                    log.carbs > 0 && log.administeredDose == 0.0 -> Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
+                    log.carbs > 0 && log.administeredDose >= 0.0 -> Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
                     log.administeredDose > 0 -> Icon(Icons.Default.Vaccines, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
                     else -> Icon(Icons.Default.Bloodtype, null, tint = Color(0xFFD32F2F), modifier = Modifier.size(16.dp))
                 }
