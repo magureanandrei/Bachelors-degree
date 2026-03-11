@@ -64,6 +64,9 @@ class DashboardViewModel(
     private val _logicalDayStart = MutableStateFlow(getLogicalDayStartTimestamp())
     val logicalDayStartFlow: StateFlow<Long> = _logicalDayStart.asStateFlow()
 
+    private val _historyEvents = MutableStateFlow<List<BolusLog>>(emptyList())
+    val historyEvents: StateFlow<List<BolusLog>> = _historyEvents.asStateFlow()
+
     init {
         // Keep _graphEvents in sync with local logs automatically
         viewModelScope.launch {
@@ -87,20 +90,40 @@ class DashboardViewModel(
 
 
     // --- UPDATED: Background Fetcher for Dashboard Data ---
+    fun fetchHistoryData(isCgmEnabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (isCgmEnabled) {
+                    val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
+                    val history = CgmHelper.getBgHistoryFromXDrip()
+                    val xdripWithBg = xdripTreatments.map { treatment ->
+                        treatment.copy(bloodGlucose = findClosestBg(treatment.timestamp, history))
+                    }
+                    withContext(Dispatchers.Main) {
+                        val combined = (allLogs.value + xdripWithBg)
+                            .distinctBy { it.timestamp }
+                            .sortedByDescending { it.timestamp }
+                        _historyEvents.value = combined
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        _historyEvents.value = allLogs.value.sortedByDescending { it.timestamp }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("DashboardVM", "History fetch failed", e)
+            }
+        }
+    }
     fun fetchDashboardData(isCgmEnabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 if (isCgmEnabled) {
                     val latest = CgmHelper.getLatestBgFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
-
                     val dayStart = getLogicalDayStartTimestamp()
-
                     val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
-                    Log.d("DashboardVM", "dayStart=$dayStart (${Date(dayStart)})")
-                    xdripTreatments.forEach {
-                        Log.d("DashboardVM", "  raw xDrip: ts=${it.timestamp} (${Date(it.timestamp)}) carbs=${it.carbs} insulin=${it.administeredDose}")
-                    }
+
                     val todayXDrip = xdripTreatments
                         .filter { it.timestamp >= dayStart }
                         .map { treatment ->
@@ -108,7 +131,6 @@ class DashboardViewModel(
                                 bloodGlucose = findClosestBg(treatment.timestamp, history)
                             )
                         }
-
 
                     withContext(Dispatchers.Main) {
                         _latestReading.value = latest

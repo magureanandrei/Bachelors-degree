@@ -1,19 +1,9 @@
 package com.example.diabetesapp.ui.screens
 
 import LogEntryCard
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.Bloodtype
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DirectionsRun
-import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,12 +15,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.data.database.BolusDatabase
-import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
-import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -43,18 +31,25 @@ fun HistoryScreen(
     val logRepository = remember { BolusLogRepository(database.bolusLogDao()) }
     val settingsRepository = remember { BolusSettingsRepository(context) }
 
-    // 2. Pass both to the factory
     val viewModel: DashboardViewModel = viewModel(
         factory = DashboardViewModelFactory(logRepository, settingsRepository)
     )
 
-    val logs by viewModel.allLogs.collectAsState()
+    val historyEvents by viewModel.historyEvents.collectAsState()
+    val settings by viewModel.settings.collectAsState()
+    val isCgmEnabled = settings.glucoseSource == "CGM"
 
-    val groupedLogs = remember(logs) {
-        logs.groupBy { log ->
-            val formatter = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-            formatter.format(Date(log.timestamp))
-        }
+    LaunchedEffect(Unit) {
+        viewModel.fetchHistoryData(isCgmEnabled = isCgmEnabled)
+    }
+
+    val groupedLogs = remember(historyEvents) {
+        historyEvents
+            .sortedByDescending { it.timestamp }
+            .groupBy { log ->
+                SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                    .format(Date(log.timestamp))
+            }
     }
 
     Column(
@@ -70,7 +65,7 @@ fun HistoryScreen(
             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
         )
 
-        if (logs.isEmpty()) {
+        if (historyEvents.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No records found.", color = Color.Gray)
             }
@@ -90,7 +85,6 @@ fun HistoryScreen(
                             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                         )
                     }
-
                     items(dailyLogs) { log ->
                         LogEntryCard(log = log, onDelete = { viewModel.deleteLog(log) })
                     }
@@ -99,4 +93,3 @@ fun HistoryScreen(
         }
     }
 }
-

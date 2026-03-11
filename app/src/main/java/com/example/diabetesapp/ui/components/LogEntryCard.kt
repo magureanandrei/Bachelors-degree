@@ -80,6 +80,12 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("BG Check", fontSize = 12.sp, color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold)
                         }
+                        "CORRECTION" -> {
+                            Icon(Icons.Default.Vaccines, null, modifier = Modifier.size(14.dp), tint = Color(0xFF1976D2))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            val label = if (log.notes == "Auto-entry via CareLink") "CareLink Sync" else "Correction"
+                            Text(label, fontSize = 12.sp, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold)
+                        }
                         "MANUAL_INSULIN", "MIXED_LOG" -> {
                             Icon(Icons.Default.Vaccines, null, modifier = Modifier.size(14.dp), tint = Color(0xFF1976D2))
                             Spacer(modifier = Modifier.width(4.dp))

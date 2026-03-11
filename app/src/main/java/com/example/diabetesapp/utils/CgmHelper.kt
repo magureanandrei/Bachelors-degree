@@ -258,7 +258,7 @@ object CgmHelper {
                                 administeredDose = totalInsulin,
                                 standardDose = totalInsulin,
                                 suggestedDose = totalInsulin,
-                                notes = if (notes.isEmpty()) "Auto-entry via CareLink" else notes,
+                                notes = "Auto-entry via CareLink",
                                 eventType = eventType,
                                 bloodGlucose = 0.0,
                                 isSportModeActive = false,
