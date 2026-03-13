@@ -1,6 +1,9 @@
 package com.example.diabetesapp.viewmodel
 
+import android.content.Context
 import android.util.Log
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,6 +17,7 @@ import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
 import com.example.diabetesapp.utils.CgmReading
+import com.example.diabetesapp.utils.HealthConnectHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,12 +28,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
-import java.util.Date
 
 class DashboardViewModel(
     private val repository: BolusLogRepository,
-    private val settingsRepository: BolusSettingsRepository // Injecting the settings repo
+    private val settingsRepository: BolusSettingsRepository,
+    private val healthConnectHelper: HealthConnectHelper? = null
 ) : ViewModel() {
 
     // Observe all logs for the graph/list
@@ -67,15 +72,20 @@ class DashboardViewModel(
     private val _historyEvents = MutableStateFlow<List<BolusLog>>(emptyList())
     val historyEvents: StateFlow<List<BolusLog>> = _historyEvents.asStateFlow()
 
+    private val _recentWorkouts = MutableStateFlow<List<ExerciseSessionRecord>>(emptyList())
+    val recentWorkouts: StateFlow<List<ExerciseSessionRecord>> = _recentWorkouts.asStateFlow()
+
+    // Separate backing list so HC workouts survive any _graphEvents rebuild
+    private val _hcWorkoutLogs = MutableStateFlow<List<BolusLog>>(emptyList())
+
     init {
         // Keep _graphEvents in sync with local logs automatically
         viewModelScope.launch {
             allLogs.collect { logs ->
                 val dayStart = getLogicalDayStartTimestamp()
                 val todayLocal = logs.filter { it.timestamp >= dayStart }.sortedBy { it.timestamp }
-                // Merge with any existing xDrip treatments already in _graphEvents
-                val existing = _graphEvents.value.filter { it.id == 0 } // xDrip logs have id=0
-                _graphEvents.value = (todayLocal + existing)
+                val hcWorkouts = _hcWorkoutLogs.value
+                _graphEvents.value = (todayLocal + hcWorkouts)
                     .distinctBy { it.timestamp }
                     .sortedBy { it.timestamp }
             }
@@ -116,6 +126,7 @@ class DashboardViewModel(
         }
     }
     fun fetchDashboardData(isCgmEnabled: Boolean) {
+        fetchRecentWorkouts()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 if (isCgmEnabled) {
@@ -137,18 +148,22 @@ class DashboardViewModel(
                         _cgmReadings.value = history
 
                         val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
-                        val combined = (localLogs + todayXDrip)
+                        val hcWorkouts = _hcWorkoutLogs.value
+                        val combined = (localLogs + todayXDrip + hcWorkouts)
                             .distinctBy { it.timestamp }
                             .sortedBy { it.timestamp }
 
-                        Log.d("DashboardVM", "Graph events: ${combined.size} total (${localLogs.size} local + ${todayXDrip.size} xDrip)")
+                        Log.d("DashboardVM", "Graph events: ${combined.size} total (${localLogs.size} local + ${todayXDrip.size} xDrip + ${hcWorkouts.size} HC workouts)")
                         _graphEvents.value = combined
                     }
                 } else {
                     val dayStart = getLogicalDayStartTimestamp()
                     val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
                     withContext(Dispatchers.Main) {
-                        _graphEvents.value = localLogs.sortedBy { it.timestamp }
+                        val hcWorkouts = _hcWorkoutLogs.value
+                        _graphEvents.value = (localLogs + hcWorkouts)
+                            .distinctBy { it.timestamp }
+                            .sortedBy { it.timestamp }
                     }
                 }
             } catch (e: Exception) {
@@ -172,6 +187,60 @@ class DashboardViewModel(
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
         return calendar.timeInMillis
+    }
+
+    fun fetchRecentWorkouts() {
+        val helper = healthConnectHelper ?: return
+        viewModelScope.launch {
+            val records = helper.getRecentWorkouts()
+            val steps = helper.getDailySteps() // <-- add this
+            Log.d("HC_Steps", "Today's steps: $steps")
+            _recentWorkouts.value = records
+
+            val dayStart = getLogicalDayStartTimestamp()
+
+            val workoutLogs = records.mapNotNull { record ->
+                val startMs = record.startTime.toEpochMilli()
+                if (startMs < dayStart) return@mapNotNull null
+
+                val durationMinutes = ChronoUnit.MINUTES.between(record.startTime, record.endTime).toFloat()
+                val sportType = when (record.exerciseType) {
+                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "Walking"
+                    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "Running"
+                    ExerciseSessionRecord.EXERCISE_TYPE_BIKING -> "Cycling"
+                    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,
+                    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "Swimming"
+                    else -> "Workout"
+                }
+
+                BolusLog(
+                    id = 0,
+                    timestamp = startMs,
+                    eventType = "SPORT",
+                    status = "COMPLETED",
+                    bloodGlucose = 0.0,
+                    carbs = 0.0,
+                    standardDose = 0.0,
+                    suggestedDose = 0.0,
+                    administeredDose = 0.0,
+                    isSportModeActive = true,
+                    sportType = sportType,
+                    sportIntensity = "Medium",
+                    sportDuration = durationMinutes,
+                    notes = "Auto-imported from Health Connect",
+                    clinicalSuggestion = null
+                )
+            }
+
+            // Store in dedicated list
+            _hcWorkoutLogs.value = workoutLogs
+
+            // Immediately merge into current _graphEvents
+            val localLogs = _graphEvents.value.filter { it.id != 0 }
+            _graphEvents.value = (localLogs + workoutLogs)
+                .distinctBy { it.timestamp }
+                .sortedBy { it.timestamp }
+        }
     }
 
     fun checkForPendingWorkouts(logs: List<BolusLog>) {
@@ -223,16 +292,16 @@ class DashboardViewModel(
         val newInsight = "Post-Workout Insight: ${decision.clinicalRationale}"
         val combinedInsight = if (log.clinicalSuggestion.isNullOrBlank()) newInsight else "${log.clinicalSuggestion}\n\n$newInsight"
 
-        val calendar = java.util.Calendar.getInstance().apply {
+        val calendar = Calendar.getInstance().apply {
             timeInMillis = log.timestamp
         }
         try {
             val parts = actualStartTimeStr.split(":")
             if (parts.size == 2) {
-                calendar.set(java.util.Calendar.HOUR_OF_DAY, parts[0].toInt())
-                calendar.set(java.util.Calendar.MINUTE, parts[1].toInt())
+                calendar.set(Calendar.HOUR_OF_DAY, parts[0].toInt())
+                calendar.set(Calendar.MINUTE, parts[1].toInt())
             }
-        } catch (e: Exception) { /* keep original */ }
+        } catch (_: Exception) { /* keep original */ }
 
         val updatedLog = log.copy(
             timestamp = calendar.timeInMillis,
@@ -254,12 +323,21 @@ class DashboardViewModel(
 
 class DashboardViewModelFactory(
     private val repository: BolusLogRepository,
-    private val settingsRepository: BolusSettingsRepository
+    private val settingsRepository: BolusSettingsRepository,
+    private val context: Context? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DashboardViewModel::class.java)) {
+            val healthConnectHelper = context?.let {
+                try {
+                    HealthConnectHelper(HealthConnectClient.getOrCreate(it))
+                } catch (e: Exception) {
+                    Log.w("DashboardVM", "Health Connect init failed: ${e.message}")
+                    null
+                }
+            }
             @Suppress("UNCHECKED_CAST")
-            return DashboardViewModel(repository, settingsRepository) as T
+            return DashboardViewModel(repository, settingsRepository, healthConnectHelper) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

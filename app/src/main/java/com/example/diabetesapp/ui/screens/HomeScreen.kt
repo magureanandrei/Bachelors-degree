@@ -1,10 +1,13 @@
 package com.example.diabetesapp.ui.screens
 
+import android.content.ActivityNotFoundException
 import android.util.Log
-import androidx.compose.foundation.Canvas
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,47 +18,27 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.health.connect.client.records.StepsRecord
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.R
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.repository.BolusLogRepository
-import com.example.diabetesapp.viewmodel.DashboardViewModel
-import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.text.style.TextOverflow
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.CompactLogEntryCard
 import com.example.diabetesapp.ui.components.CurrentBgWidget
 import com.example.diabetesapp.ui.components.DashboardActionButtons
-import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import com.example.diabetesapp.ui.components.LogDetailsDialog
 import com.example.diabetesapp.ui.components.PostWorkoutVerificationDialog
 import com.example.diabetesapp.ui.components.TimeScaledBgGraph
-import com.example.diabetesapp.utils.CgmReading
+import com.example.diabetesapp.viewmodel.DashboardViewModel
+import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import kotlinx.coroutines.isActive
 
 @Composable
@@ -71,7 +54,7 @@ fun HomeScreen(
     val settingsRepository = remember { BolusSettingsRepository(context) }
 
     val viewModel: DashboardViewModel = viewModel(
-        factory = DashboardViewModelFactory(logRepository, settingsRepository)
+        factory = DashboardViewModelFactory(logRepository, settingsRepository, context)
     )
 
     val allLogs by viewModel.allLogs.collectAsState()
@@ -85,6 +68,62 @@ fun HomeScreen(
 
 
     var selectedLogForModal by remember { mutableStateOf<BolusLog?>(null) }
+
+    // Health Connect runtime permission
+    val healthPermissions: Collection<String> = remember {
+        setOf(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
+        listOf(HealthPermission.getReadPermission(StepsRecord::class))
+    }
+    val permissionContract = remember {
+        PermissionController.createRequestPermissionResultContract()
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = permissionContract
+    ) { granted ->
+        val grantedAll = granted.containsAll(healthPermissions)
+        Log.d("HealthConnect", "Permissions granted: $granted")
+        if (grantedAll) {
+            viewModel.fetchRecentWorkouts()
+        }
+    }
+
+    // getSdkStatus without a provider package works on platform-native HC (Android 14+)
+    // and also on devices that have the standalone Google HC app installed.
+    val isHealthConnectAvailable = remember {
+        try {
+            val status = HealthConnectClient.getSdkStatus(context)
+            Log.d("HealthConnect", "HC SDK status: $status")
+            status == HealthConnectClient.SDK_AVAILABLE
+        } catch (e: Exception) {
+            Log.w("HealthConnect", "SDK status check failed: ${e.message}")
+            false
+        }
+    }
+
+    LaunchedEffect(isHealthConnectAvailable) {
+        if (!isHealthConnectAvailable) {
+            Log.w("HealthConnect", "Health Connect not available on this device; skipping")
+            return@LaunchedEffect
+        }
+
+        try {
+            val client = HealthConnectClient.getOrCreate(context)
+            val granted = client.permissionController.getGrantedPermissions()
+
+            if (granted.containsAll(healthPermissions)) {
+                Log.d("HealthConnect", "Permissions already granted: $granted")
+                viewModel.fetchRecentWorkouts()
+                return@LaunchedEffect
+            }
+
+            Log.d("HealthConnect", "Launching HC permission UI (granted so far: $granted)")
+            permissionLauncher.launch(healthPermissions as Set<String>)
+        } catch (e: ActivityNotFoundException) {
+            Log.w("HealthConnect", "HC permission UI not available on this device: ${e.message}")
+        } catch (e: Exception) {
+            Log.w("HealthConnect", "HC permission flow failed: ${e.message}")
+        }
+    }
 
     LaunchedEffect(allLogs) {
         viewModel.checkForPendingWorkouts(allLogs)

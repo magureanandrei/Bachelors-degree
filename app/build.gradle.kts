@@ -53,6 +53,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
+    // Change this line to use the stable 1.1.0 version
+    implementation("androidx.health.connect:connect-client:1.2.0-alpha02")
     implementation(libs.androidx.room.external.antlr)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

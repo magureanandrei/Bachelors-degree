@@ -1,6 +1,6 @@
 package com.example.diabetesapp.ui.screens
 
-import LogEntryCard
+import com.example.diabetesapp.ui.components.LogEntryCard
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,7 +32,7 @@ fun HistoryScreen(
     val settingsRepository = remember { BolusSettingsRepository(context) }
 
     val viewModel: DashboardViewModel = viewModel(
-        factory = DashboardViewModelFactory(logRepository, settingsRepository)
+        factory = DashboardViewModelFactory(logRepository, settingsRepository, context)
     )
 
     val historyEvents by viewModel.historyEvents.collectAsState()

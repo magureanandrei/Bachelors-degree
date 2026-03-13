@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextStyle
@@ -210,16 +211,49 @@ fun TimeScaledBgGraph(
                 logs.filter { it.isSportModeActive && it.sportDuration != null }.forEach { sportLog ->
                     val startX = timeToX(sportLog.timestamp)
                     val endX = timeToX(sportLog.timestamp + (sportLog.sportDuration!!.toLong() * 60 * 1000L))
+                    val bandWidth = (endX - startX).coerceAtLeast(4f)
                     val isPlanned = sportLog.status == "PLANNED"
-                    val shadeColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f) else Color(0xFF00695C).copy(alpha = 0.15f)
+                    val isAutoImported = sportLog.notes == "Auto-imported from Health Connect"
 
-                    drawRect(color = shadeColor, topLeft = Offset(startX, topPadding), size = Size(endX - startX, graphHeight))
-
-                    val borderColor = if (isPlanned) Color(0xFFFF9800) else Color(0xFF00695C)
+                    val fillColor = when {
+                        isPlanned -> Color(0xFFFF9800).copy(alpha = 0.15f)
+                        isAutoImported -> Color(0xFF1565C0).copy(alpha = 0.13f)
+                        else -> Color(0xFF00695C).copy(alpha = 0.15f)
+                    }
+                    val borderColor = when {
+                        isPlanned -> Color(0xFFFF9800)
+                        isAutoImported -> Color(0xFF1E88E5)
+                        else -> Color(0xFF00695C)
+                    }
                     val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
 
+                    // Shaded band
+                    drawRect(color = fillColor, topLeft = Offset(startX, topPadding), size = Size(bandWidth, graphHeight))
+
+                    // Left and right border lines
                     drawLine(borderColor, Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
-                    drawLine(borderColor, Offset(endX, topPadding), Offset(endX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
+                    drawLine(borderColor, Offset(startX + bandWidth, topPadding), Offset(startX + bandWidth, topPadding + graphHeight), 3f, pathEffect = pathEffect)
+
+                    // Label inside the band: sport type + duration
+                    val label = "${sportLog.sportType ?: "Workout"} · ${sportLog.sportDuration.toInt()}m"
+                    val labelResult = textMeasurer.measure(
+                        label,
+                        style = TextStyle(
+                            color = borderColor,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    // Only draw label if band is wide enough
+                    if (bandWidth > labelResult.size.height + 4f) {
+                        val labelX = startX + 4f
+                        val labelY = topPadding + graphHeight / 2f - labelResult.size.width / 2f
+                        translate(left = labelX, top = labelY) {
+                            rotate(90f) {
+                                drawText(labelResult)
+                            }
+                        }
+                    }
                 }
 
                 // 5. X-AXIS TIME LABELS

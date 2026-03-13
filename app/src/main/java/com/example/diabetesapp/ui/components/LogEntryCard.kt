@@ -1,3 +1,5 @@
+package com.example.diabetesapp.ui.components
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
