@@ -70,9 +70,11 @@ fun HomeScreen(
     var selectedLogForModal by remember { mutableStateOf<BolusLog?>(null) }
 
     // Health Connect runtime permission
-    val healthPermissions: Collection<String> = remember {
-        setOf(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
-        listOf(HealthPermission.getReadPermission(StepsRecord::class))
+    val healthPermissions: Set<String> = remember {
+        setOf(
+            HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+            HealthPermission.getReadPermission(StepsRecord::class)
+        )
     }
     val permissionContract = remember {
         PermissionController.createRequestPermissionResultContract()
@@ -80,9 +82,8 @@ fun HomeScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = permissionContract
     ) { granted ->
-        val grantedAll = granted.containsAll(healthPermissions)
         Log.d("HealthConnect", "Permissions granted: $granted")
-        if (grantedAll) {
+        if (granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))) {
             viewModel.fetchRecentWorkouts()
         }
     }
@@ -117,7 +118,7 @@ fun HomeScreen(
             }
 
             Log.d("HealthConnect", "Launching HC permission UI (granted so far: $granted)")
-            permissionLauncher.launch(healthPermissions as Set<String>)
+            permissionLauncher.launch(healthPermissions)
         } catch (e: ActivityNotFoundException) {
             Log.w("HealthConnect", "HC permission UI not available on this device: ${e.message}")
         } catch (e: Exception) {

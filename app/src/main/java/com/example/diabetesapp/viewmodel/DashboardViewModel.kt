@@ -193,17 +193,22 @@ class DashboardViewModel(
         val helper = healthConnectHelper ?: return
         viewModelScope.launch {
             val records = helper.getRecentWorkouts()
-            val steps = helper.getDailySteps() // <-- add this
+            val detectedWalks = helper.detectWalkingFromSteps()
+            val steps = helper.getDailySteps()
+
             Log.d("HC_Steps", "Today's steps: $steps")
             _recentWorkouts.value = records
 
             val dayStart = getLogicalDayStartTimestamp()
 
-            val workoutLogs = records.mapNotNull { record ->
+            // Map confirmed workout records to BolusLog
+            val confirmedWorkoutLogs = records.mapNotNull { record ->
                 val startMs = record.startTime.toEpochMilli()
                 if (startMs < dayStart) return@mapNotNull null
 
-                val durationMinutes = ChronoUnit.MINUTES.between(record.startTime, record.endTime).toFloat()
+                val durationMinutes = ChronoUnit.MINUTES.between(
+                    record.startTime, record.endTime
+                ).toFloat()
                 val sportType = when (record.exerciseType) {
                     ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "Walking"
                     ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "Running"
@@ -232,12 +237,26 @@ class DashboardViewModel(
                 )
             }
 
-            // Store in dedicated list
-            _hcWorkoutLogs.value = workoutLogs
+            // Filter detected walks to today only
+            val todayWalks = detectedWalks.filter { it.timestamp >= dayStart }
 
-            // Immediately merge into current _graphEvents
+            // Confirmed workouts take priority over detected walks at same time
+            // Use 10-minute bucket deduplication
+            val bucketMs = 10 * 60 * 1000L
+            val allWorkouts = (confirmedWorkoutLogs + todayWalks)
+                .groupBy { it.timestamp / bucketMs }
+                .map { (_, entries) ->
+                    // Prefer confirmed (notes = "Auto-imported") over detected walks
+                    entries.firstOrNull { it.notes == "Auto-imported from Health Connect" }
+                        ?: entries.first()
+                }
+                .sortedBy { it.timestamp }
+
+            _hcWorkoutLogs.value = allWorkouts
+
+            // Merge into graphEvents
             val localLogs = _graphEvents.value.filter { it.id != 0 }
-            _graphEvents.value = (localLogs + workoutLogs)
+            _graphEvents.value = (localLogs + allWorkouts)
                 .distinctBy { it.timestamp }
                 .sortedBy { it.timestamp }
         }
