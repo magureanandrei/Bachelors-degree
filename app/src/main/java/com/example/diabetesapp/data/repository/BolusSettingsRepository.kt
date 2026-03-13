@@ -4,131 +4,119 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.InsulinType
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 class BolusSettingsRepository(context: Context) {
 
-    private val sharedPreferences: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("bolus_settings", Context.MODE_PRIVATE)
 
-    private val _settings = MutableStateFlow(loadSettings())
-    val settings: StateFlow<BolusSettings> = _settings.asStateFlow()
+    // This is the "Magic" part. It listens for any change to SharedPreferences
+    // and immediately pushes the new BolusSettings object into the Flow.
+    val settings: Flow<BolusSettings> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            trySend(getSettingsImmediate())
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
 
-    private fun loadSettings(): BolusSettings {
+        // Push the initial values
+        trySend(getSettingsImmediate())
+
+        // Cleanup when the Flow is no longer needed
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    fun getSettingsImmediate(): BolusSettings {
         return BolusSettings(
+            targetBG = prefs.getFloat("target_bg", 100f),
+            hypoLimit = prefs.getFloat("hypo_limit", 70f),
+            hyperLimit = prefs.getFloat("hyper_limit", 180f),
+
+            // Therapy & Glucose Source
+            therapyType = prefs.getString("therapy_type", "MDI") ?: "MDI",
+            glucoseSource = prefs.getString("glucose_source", "MANUAL") ?: "MANUAL",
+
+            // General Configuration
             insulinType = InsulinType.valueOf(
-                sharedPreferences.getString(KEY_INSULIN_TYPE, InsulinType.NOVORAPID.name) ?: InsulinType.NOVORAPID.name
+                prefs.getString("insulin_type", InsulinType.NOVORAPID.name) ?: InsulinType.NOVORAPID.name
             ),
-            durationOfAction = sharedPreferences.getFloat(KEY_DURATION, 4.0f),
-            // ICR 4-block values
-            icrMorning = sharedPreferences.getFloat(KEY_ICR_MORNING, 10f),
-            icrNoon = sharedPreferences.getFloat(KEY_ICR_NOON, 10f),
-            icrEvening = sharedPreferences.getFloat(KEY_ICR_EVENING, 10f),
-            icrNight = sharedPreferences.getFloat(KEY_ICR_NIGHT, 10f),
-            // ISF 4-block values
-            isfMorning = sharedPreferences.getFloat(KEY_ISF_MORNING, 50f),
-            isfNoon = sharedPreferences.getFloat(KEY_ISF_NOON, 50f),
-            isfEvening = sharedPreferences.getFloat(KEY_ISF_EVENING, 50f),
-            isfNight = sharedPreferences.getFloat(KEY_ISF_NIGHT, 50f),
-            // Target BG (global)
-            targetBG = sharedPreferences.getFloat(KEY_TARGET_BG, 100f)
+            durationOfAction = prefs.getFloat("duration_of_action", 4.0f),
+            maxBolus = prefs.getFloat("max_bolus", 15.0f),
+
+            // ICR
+            icrMorning = prefs.getFloat("icr_morning", 10f),
+            icrNoon = prefs.getFloat("icr_noon", 10f),
+            icrEvening = prefs.getFloat("icr_evening", 10f),
+            icrNight = prefs.getFloat("icr_night", 10f),
+
+            // ISF
+            isfMorning = prefs.getFloat("isf_morning", 50f),
+            isfNoon = prefs.getFloat("isf_noon", 50f),
+            isfEvening = prefs.getFloat("isf_evening", 50f),
+            isfNight = prefs.getFloat("isf_night", 50f)
         )
     }
 
-    fun updateSettings(settings: BolusSettings) {
-        sharedPreferences.edit().apply {
-            putString(KEY_INSULIN_TYPE, settings.insulinType.name)
-            putFloat(KEY_DURATION, settings.durationOfAction)
-            // ICR 4-block values
-            putFloat(KEY_ICR_MORNING, settings.icrMorning)
-            putFloat(KEY_ICR_NOON, settings.icrNoon)
-            putFloat(KEY_ICR_EVENING, settings.icrEvening)
-            putFloat(KEY_ICR_NIGHT, settings.icrNight)
-            // ISF 4-block values
-            putFloat(KEY_ISF_MORNING, settings.isfMorning)
-            putFloat(KEY_ISF_NOON, settings.isfNoon)
-            putFloat(KEY_ISF_EVENING, settings.isfEvening)
-            putFloat(KEY_ISF_NIGHT, settings.isfNight)
-            // Target BG
-            putFloat(KEY_TARGET_BG, settings.targetBG)
+    fun saveSettings(settings: BolusSettings) {
+        prefs.edit().apply {
+            putFloat("target_bg", settings.targetBG)
+            putFloat("hypo_limit", settings.hypoLimit)
+            putFloat("hyper_limit", settings.hyperLimit)
+
+            putString("therapy_type", settings.therapyType)
+            putString("glucose_source", settings.glucoseSource)
+            putString("insulin_type", settings.insulinType.name)
+            putFloat("duration_of_action", settings.durationOfAction)
+            putFloat("max_bolus", settings.maxBolus)
+
+            putFloat("icr_morning", settings.icrMorning)
+            putFloat("icr_noon", settings.icrNoon)
+            putFloat("icr_evening", settings.icrEvening)
+            putFloat("icr_night", settings.icrNight)
+
+            putFloat("isf_morning", settings.isfMorning)
+            putFloat("isf_noon", settings.isfNoon)
+            putFloat("isf_evening", settings.isfEvening)
+            putFloat("isf_night", settings.isfNight)
+
             apply()
         }
-        _settings.value = settings
     }
 
-    fun updateInsulinType(insulinType: InsulinType) {
-        updateSettings(_settings.value.copy(insulinType = insulinType))
+    // --- Helper Update Functions (Routing to saveSettings) ---
+    private fun updateField(update: (BolusSettings) -> BolusSettings) {
+        val current = getSettingsImmediate()
+        saveSettings(update(current))
     }
 
-    fun updateDurationOfAction(duration: Float) {
-        updateSettings(_settings.value.copy(durationOfAction = duration))
-    }
+    fun updateTherapyType(type: String) = updateField { it.copy(therapyType = type) }
+    fun updateGlucoseSource(source: String) = updateField { it.copy(glucoseSource = source) }
+    fun updateInsulinType(insulinType: InsulinType) = updateField { it.copy(insulinType = insulinType) }
+    fun updateDurationOfAction(duration: Float) = updateField { it.copy(durationOfAction = duration) }
 
-    // ICR update methods for each time segment
-    fun updateIcrMorning(value: Float) {
-        updateSettings(_settings.value.copy(icrMorning = value))
-    }
+    fun updateIcrMorning(value: Float) = updateField { it.copy(icrMorning = value) }
+    fun updateIcrNoon(value: Float) = updateField { it.copy(icrNoon = value) }
+    fun updateIcrEvening(value: Float) = updateField { it.copy(icrEvening = value) }
+    fun updateIcrNight(value: Float) = updateField { it.copy(icrNight = value) }
 
-    fun updateIcrNoon(value: Float) {
-        updateSettings(_settings.value.copy(icrNoon = value))
-    }
+    fun updateIsfMorning(value: Float) = updateField { it.copy(isfMorning = value) }
+    fun updateIsfNoon(value: Float) = updateField { it.copy(isfNoon = value) }
+    fun updateIsfEvening(value: Float) = updateField { it.copy(isfEvening = value) }
+    fun updateIsfNight(value: Float) = updateField { it.copy(isfNight = value) }
 
-    fun updateIcrEvening(value: Float) {
-        updateSettings(_settings.value.copy(icrEvening = value))
-    }
-
-    fun updateIcrNight(value: Float) {
-        updateSettings(_settings.value.copy(icrNight = value))
-    }
-
-    // ISF update methods for each time segment
-    fun updateIsfMorning(value: Float) {
-        updateSettings(_settings.value.copy(isfMorning = value))
-    }
-
-    fun updateIsfNoon(value: Float) {
-        updateSettings(_settings.value.copy(isfNoon = value))
-    }
-
-    fun updateIsfEvening(value: Float) {
-        updateSettings(_settings.value.copy(isfEvening = value))
-    }
-
-    fun updateIsfNight(value: Float) {
-        updateSettings(_settings.value.copy(isfNight = value))
-    }
-
-    fun updateTargetBG(target: Float) {
-        updateSettings(_settings.value.copy(targetBG = target))
-    }
+    fun updateTargetBG(target: Float) = updateField { it.copy(targetBG = target) }
+    fun updateMaxBolus(value: Float) = updateField { it.copy(maxBolus = value) }
+    fun updateHypoLimit(value: Float) = updateField { it.copy(hypoLimit = value) }
+    fun updateHyperLimit(value: Float) = updateField { it.copy(hyperLimit = value) }
 
     companion object {
-        private const val PREFS_NAME = "bolus_settings_prefs"
-        private const val KEY_INSULIN_TYPE = "insulin_type"
-        private const val KEY_DURATION = "duration_of_action"
-        // ICR 4-block keys
-        private const val KEY_ICR_MORNING = "icr_morning"
-        private const val KEY_ICR_NOON = "icr_noon"
-        private const val KEY_ICR_EVENING = "icr_evening"
-        private const val KEY_ICR_NIGHT = "icr_night"
-        // ISF 4-block keys
-        private const val KEY_ISF_MORNING = "isf_morning"
-        private const val KEY_ISF_NOON = "isf_noon"
-        private const val KEY_ISF_EVENING = "isf_evening"
-        private const val KEY_ISF_NIGHT = "isf_night"
-        // Target BG
-        private const val KEY_TARGET_BG = "target_bg"
-
         @Volatile
         private var INSTANCE: BolusSettingsRepository? = null
 
         fun getInstance(context: Context): BolusSettingsRepository {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: BolusSettingsRepository(context.applicationContext).also {
-                    INSTANCE = it
-                }
+                INSTANCE ?: BolusSettingsRepository(context.applicationContext).also { INSTANCE = it }
             }
         }
     }

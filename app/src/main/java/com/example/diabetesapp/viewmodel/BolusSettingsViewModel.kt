@@ -31,7 +31,11 @@ data class DraftSettings(
     val isfMorning: String = "50",
     val isfNoon: String = "50",
     val isfEvening: String = "50",
-    val isfNight: String = "50"
+    val isfNight: String = "50",
+
+    val maxBolus: String = "15.0",
+    val hypoLimit: String = "70",
+    val hyperLimit: String = "180"
 )
 
 data class BolusSettingsUiState(
@@ -64,7 +68,9 @@ enum class ExpandableCard {
     GENERAL,
     ICR,
     ISF,
-    TARGET_BG
+    TARGET_BG,
+
+    SAFETY_LIMITS
 }
 
 enum class FieldType {
@@ -108,7 +114,10 @@ class BolusSettingsViewModel(
                             isfMorning = persistedSettings.isfMorning.toInt().toString(),
                             isfNoon = persistedSettings.isfNoon.toInt().toString(),
                             isfEvening = persistedSettings.isfEvening.toInt().toString(),
-                            isfNight = persistedSettings.isfNight.toInt().toString()
+                            isfNight = persistedSettings.isfNight.toInt().toString(),
+                            maxBolus = persistedSettings.maxBolus.toString(),
+                            hypoLimit = persistedSettings.hypoLimit.toInt().toString(),
+                            hyperLimit = persistedSettings.hyperLimit.toInt().toString()
                         ),
                         icrTimeDependent = !persistedSettings.hasUniformIcr,
                         isfTimeDependent = !persistedSettings.hasUniformIsf
@@ -342,6 +351,18 @@ class BolusSettingsViewModel(
 
         return true
     }
+    fun updateMaxBolus(value: String) {
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(draftSettings = currentDraft.copy(maxBolus = value))
+    }
+    fun updateHypoLimit(value: String) {
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(draftSettings = currentDraft.copy(hypoLimit = value))
+    }
+    fun updateHyperLimit(value: String) {
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value = _uiState.value.copy(draftSettings = currentDraft.copy(hyperLimit = value))
+    }
 
     /**
      * Live validation - validates a single field as user types
@@ -440,6 +461,10 @@ class BolusSettingsViewModel(
                 draft.isfNoon.toFloatOrNull()?.let { repository.updateIsfNoon(it) }
                 draft.isfEvening.toFloatOrNull()?.let { repository.updateIsfEvening(it) }
                 draft.isfNight.toFloatOrNull()?.let { repository.updateIsfNight(it) }
+
+                draft.maxBolus.toFloatOrNull()?.let { repository.updateMaxBolus(it) }
+                draft.hypoLimit.toFloatOrNull()?.let { repository.updateHypoLimit(it) }
+                draft.hyperLimit.toFloatOrNull()?.let { repository.updateHyperLimit(it) }
 
                 android.util.Log.d("BolusSettings", "=== Settings Saved Successfully ===")
                 android.util.Log.d("BolusSettings", "Duration: ${draft.durationOfAction} hours")

@@ -39,8 +39,8 @@ fun MainScreen() {
     BackHandler(enabled = backStack.size > 1) {
         backStack = backStack.dropLast(1)
         val previousScreen = backStack.last()
-        // Sync the bottom nav bar if we go back to a main tab
-        if (previousScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+        // FIX: Replaced "bolus" with "education"
+        if (previousScreen in listOf("home", "history", "stats", "education", "menu")) {
             selectedRoute = previousScreen
         }
     }
@@ -49,7 +49,8 @@ fun MainScreen() {
     val navigateTo = { route: String ->
         if (currentScreen != route) {
             backStack = backStack + route
-            if (route in listOf("home", "bolus", "history", "stats", "menu")) {
+            // FIX: Replaced "bolus" with "education"
+            if (route in listOf("home", "history", "stats", "education", "menu")) {
                 selectedRoute = route
             }
         }
@@ -60,7 +61,8 @@ fun MainScreen() {
         if (backStack.size > 1) {
             backStack = backStack.dropLast(1)
             val previousScreen = backStack.last()
-            if (previousScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+            // FIX: Replaced "bolus" with "education"
+            if (previousScreen in listOf("home", "history", "stats", "education", "menu")) {
                 selectedRoute = previousScreen
             }
         }
@@ -69,7 +71,7 @@ fun MainScreen() {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            if (currentScreen in listOf("home", "bolus", "history", "stats", "menu")) {
+            if (currentScreen in listOf("home", "history", "stats", "education", "menu")) {
                 BottomNavBar(
                     selectedRoute = selectedRoute,
                     onNavigate = { route -> navigateTo(route) }
@@ -83,16 +85,21 @@ fun MainScreen() {
                 onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
                 onNavigateToLogReading = { navigateTo("log_reading") }
             )
-            "history" -> HistoryScreen(
-                modifier = Modifier.padding(innerPadding)
-            )
+            "history" -> HistoryScreen(modifier = Modifier.padding(innerPadding))
+            "stats" -> InsightsScreen(modifier = Modifier.padding(innerPadding))
+            "education" -> EducationScreen(modifier = Modifier.padding(innerPadding)) // NEW
             "menu" -> MenuScreen(
                 modifier = Modifier.padding(innerPadding),
-                onNavigateToCalculateBolus = { navigateTo("calculate_bolus") },
-                onNavigateToBolusSettings = { navigateTo("bolus_settings") }
+                onNavigateToBolusSettings = { navigateTo("bolus_settings") },
+                onNavigateToTherapyProfile = { navigateTo("therapy_profile") } // FIXED TYPO HERE
             )
-            // Detail Screens
+
+            // Detail screens (no bottom bar)
             "bolus_settings" -> BolusSettingsScreen(
+                modifier = Modifier.padding(innerPadding),
+                onNavigateBack = navigateBack
+            )
+            "therapy_profile" -> TherapyProfileScreen( // <-- Add this block
                 modifier = Modifier.padding(innerPadding),
                 onNavigateBack = navigateBack
             )

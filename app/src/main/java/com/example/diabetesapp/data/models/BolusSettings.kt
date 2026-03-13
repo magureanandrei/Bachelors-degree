@@ -1,6 +1,10 @@
 package com.example.diabetesapp.data.models
 
 data class BolusSettings(
+
+    val therapyType: String = "MDI", // "MDI", "PUMP_STANDARD", "PUMP_AID"
+    val glucoseSource: String = "MANUAL",  // "MANUAL" or "CGM"
+
     // General Configuration
     val insulinType: InsulinType = InsulinType.NOVORAPID,
     val durationOfAction: Float = 4.0f, // Duration in hours (decimal)
@@ -20,7 +24,11 @@ data class BolusSettings(
     val isfNight: Float = 50f,     // 23-06
 
     // Blood Glucose Target (Global for V1)
-    val targetBG: Float = 100f // mg/dL
+    val targetBG: Float = 100f,
+
+    val maxBolus: Float = 15.0f,    // Hard cap on calculator recommendations
+    val hypoLimit: Float = 70.0f,   // Low line for graph & hypo warnings
+    val hyperLimit: Float = 180.0f  // High line for graph
 ) {
     // Computed properties for display
     val durationDisplay: String
@@ -28,6 +36,9 @@ data class BolusSettings(
 
     val targetBGDisplay: String
         get() = "${targetBG.toInt()} mg/dL"
+
+    val isCGMEnabled: Boolean
+        get() = glucoseSource == "CGM"
 
     /**
      * Get ICR value for a specific time segment
