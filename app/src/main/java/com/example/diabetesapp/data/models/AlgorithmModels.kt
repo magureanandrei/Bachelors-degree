@@ -8,9 +8,17 @@ import java.time.LocalTime
  * Defines how the patient receives their baseline insulin.
  */
 enum class TherapyType {
-    MDI_PENS,      // Multiple Daily Injections (Manual long-acting insulin)
-    STANDARD_PUMP, // Pump with manual temporary basal rates
-    AID_PUMP       // Automated Insulin Delivery (Smart pump like 780G)
+        MDI,
+        PUMP_STANDARD,
+        PUMP_AID;
+
+    companion object {
+        fun fromString(value: String): TherapyType = when (value) {
+            "PUMP_STANDARD" -> PUMP_STANDARD
+            "PUMP_AID" -> PUMP_AID
+            else -> MDI
+        }
+    }
 }
 
 /**

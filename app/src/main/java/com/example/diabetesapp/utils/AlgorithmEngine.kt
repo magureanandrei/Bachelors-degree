@@ -153,14 +153,14 @@ object AlgorithmEngine {
                     if (context.sportType == "Aerobic") {
                         if (absMinutes > 30) {
                             when (context.therapyType) {
-                                TherapyType.MDI_PENS -> {
+                                TherapyType.MDI -> {
                                     rescueCarbs = 15
                                     logBuilder.append("💡 Pens: Aerobic will drop BG. Eat 15g complex carbs now. ")
                                 }
-                                TherapyType.STANDARD_PUMP -> {
+                                TherapyType.PUMP_STANDARD -> {
                                     logBuilder.append("💡 Pump: Set 50% Temp Basal now. (Or eat 15g carbs). ")
                                 }
-                                TherapyType.AID_PUMP -> {
+                                TherapyType.PUMP_AID -> {
                                     logBuilder.append("💡 AID Pump: Set 'Exercise Target' now to suspend micro-boluses. ")
                                 }
                             }

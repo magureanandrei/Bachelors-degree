@@ -305,7 +305,7 @@ class DashboardViewModel(
     ) {
         val currentSettings = settings.value
         val context = PatientContext(
-            therapyType = TherapyType.MDI_PENS,
+            therapyType = TherapyType.fromString(currentSettings.therapyType),
             bolusSettings = currentSettings,
             currentBG = log.bloodGlucose,
             hasCGM = false,
