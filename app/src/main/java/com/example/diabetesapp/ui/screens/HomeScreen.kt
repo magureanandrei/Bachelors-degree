@@ -149,12 +149,6 @@ fun HomeScreen(
             kotlinx.coroutines.delay(5 * 60 * 1000L)
         }
     }
-    LaunchedEffect(graphEvents) {
-        Log.d("GraphDebug", "graphEvents count: ${graphEvents.size}")
-        graphEvents.forEach {
-            Log.d("GraphDebug", "  event: ts=${it.timestamp} carbs=${it.carbs} insulin=${it.administeredDose} type=${it.eventType}")
-        }
-    }
 
     Column(
         modifier = modifier

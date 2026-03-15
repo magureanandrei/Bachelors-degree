@@ -35,6 +35,22 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
         }
     }
 
+    suspend fun getRawStepRecords(): List<StepsRecord> {
+        val endTime = Instant.now()
+        val startTime = endTime.minus(1, ChronoUnit.DAYS)
+        return try {
+            client.readRecords(
+                ReadRecordsRequest(
+                    recordType = StepsRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+                )
+            ).records
+        } catch (e: Exception) {
+            Log.e("HC_Steps", "Failed to read step records: ${e.message}")
+            emptyList()
+        }
+    }
+
     suspend fun getDailySteps(): Long {
         val endTime = Instant.now()
         val startTime = endTime.minus(1, ChronoUnit.DAYS)
@@ -54,33 +70,20 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
         }
     }
 
-    suspend fun detectWalkingFromSteps(): List<BolusLog> {
-        val endTime = Instant.now()
-        val startTime = endTime.minus(1, ChronoUnit.DAYS)
-
+    suspend fun detectWalkingFromSteps(stepRecords: List<StepsRecord>): List<BolusLog> {
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = StepsRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
-                )
-            )
-
-            Log.d("HC_Steps", "Raw step buckets: ${response.records.size}")
+            Log.d("HC_Steps", "Raw step buckets: ${stepRecords.size}")
 
             val walkingSessions = mutableListOf<BolusLog>()
             var sessionStart: Instant? = null
             var sessionSteps = 0L
             var lastEnd: Instant? = null
 
-            // Minimum 10 minutes to count as a session
-            val minSessionMinutes = 10L
-            // Walking threshold: 60+ steps per minute
-            val walkingStepsPerMin = 60.0
-            // Gap of 5+ minutes between buckets = new session
+            val minSessionMinutes = 7L
+            val walkingStepsPerMin = 55.0
             val maxGapMinutes = 5L
 
-            response.records.sortedBy { it.startTime }.forEach { record ->
+            stepRecords.sortedBy { it.startTime }.forEach { record ->
                 val durationSeconds = ChronoUnit.SECONDS.between(
                     record.startTime, record.endTime
                 )
@@ -103,11 +106,7 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
                             )
                             if (sessionDuration >= minSessionMinutes) {
                                 walkingSessions.add(
-                                    buildWalkLog(
-                                        sessionStart!!,
-                                        lastEnd!!,
-                                        sessionSteps
-                                    )
+                                    buildWalkLog(sessionStart!!, lastEnd!!, sessionSteps)
                                 )
                             } else {
                                 Log.d("HC_Steps", "Discarding short walk: ${sessionDuration}min < ${minSessionMinutes}min")
@@ -122,21 +121,16 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
                     }
                     lastEnd = record.endTime
                 } else {
-                    // Not walking — check if gap is too large to bridge
+                    // Not walking — end session if gap is too large
                     if (lastEnd != null && sessionStart != null) {
                         val gapFromLast = ChronoUnit.MINUTES.between(lastEnd, record.startTime)
                         if (gapFromLast > maxGapMinutes) {
-                            // End current session
                             val sessionDuration = ChronoUnit.MINUTES.between(
                                 sessionStart, lastEnd
                             )
                             if (sessionDuration >= minSessionMinutes) {
                                 walkingSessions.add(
-                                    buildWalkLog(
-                                        sessionStart!!,
-                                        lastEnd!!,
-                                        sessionSteps
-                                    )
+                                    buildWalkLog(sessionStart!!, lastEnd!!, sessionSteps)
                                 )
                             }
                             sessionStart = null
@@ -147,7 +141,7 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
                 }
             }
 
-            // Handle last session
+            // Handle last open session
             if (sessionStart != null && lastEnd != null) {
                 val sessionDuration = ChronoUnit.MINUTES.between(sessionStart, lastEnd)
                 if (sessionDuration >= minSessionMinutes) {

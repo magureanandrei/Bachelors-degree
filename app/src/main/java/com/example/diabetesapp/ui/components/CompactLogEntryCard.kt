@@ -27,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.room.jarjarred.org.antlr.v4.codegen.model.Sync
 import com.example.diabetesapp.data.models.BolusLog
 import java.text.SimpleDateFormat
 import java.util.Date
