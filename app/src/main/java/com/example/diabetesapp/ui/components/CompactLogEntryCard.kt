@@ -27,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.room.jarjarred.org.antlr.v4.codegen.model.Sync
 import com.example.diabetesapp.data.models.BolusLog
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -38,6 +37,8 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = formatter.format(Date(log.timestamp))
     val isAutoEntry = log.notes == "Auto-entry via CareLink"
+            || log.notes?.startsWith("Auto-imported") == true
+            || log.notes?.startsWith("Auto-detected") == true
 
     Card(
         onClick = onClick,
