@@ -51,7 +51,7 @@ fun HomeScreen(
     val database = remember { BolusDatabase.getDatabase(context) }
     val logRepository = remember { BolusLogRepository(database.bolusLogDao()) }
     // Ensure this repository is the one that reads/writes your High/Low/Target
-    val settingsRepository = remember { BolusSettingsRepository(context) }
+    val settingsRepository = remember { BolusSettingsRepository.getInstance(context) }
 
     val viewModel: DashboardViewModel = viewModel(
         factory = DashboardViewModelFactory(logRepository, settingsRepository, context)
@@ -142,7 +142,7 @@ fun HomeScreen(
         while (isActive) {
 
             // Trigger the fetch we built in the ViewModel
-            viewModel.fetchDashboardData(isCgmEnabled = isCgmEnabled)
+            viewModel.fetchDashboardData()
 
             // Wait for 5 minutes (300,000 milliseconds)
             // This is a "suspending" delay, meaning it won't freeze your UI

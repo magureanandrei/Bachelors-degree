@@ -37,8 +37,13 @@ data class BolusSettings(
     val targetBGDisplay: String
         get() = "${targetBG.toInt()} mg/dL"
 
-    val isCGMEnabled: Boolean
-        get() = glucoseSource == "CGM"
+
+    // Feature flags — use these everywhere instead of comparing therapyType strings directly
+    val isPumpUser: Boolean get() = therapyType == "PUMP_STANDARD" || therapyType == "PUMP_AID"
+    val isAidPump: Boolean get() = therapyType == "PUMP_AID"
+    val isManualInsulin: Boolean get() = !isPumpUser  // MDI only
+    val isCgmEnabled: Boolean get() = glucoseSource == "CGM"  // already exists, just rename to be consistent
+    val therapyTypeEnum: TherapyType get() = TherapyType.fromString(therapyType)
 
     /**
      * Get ICR value for a specific time segment

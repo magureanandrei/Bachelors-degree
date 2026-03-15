@@ -71,11 +71,9 @@ class DashboardViewModel(
 
     private val _hcWorkoutLogs = MutableStateFlow<List<BolusLog>>(emptyList())
 
-    // Bug 6 fix: expose daily steps so UI and algorithm can use them
     private val _dailySteps = MutableStateFlow(0L)
     val dailySteps: StateFlow<Long> = _dailySteps.asStateFlow()
 
-    // Cache xDrip treatments so init block can include them when local logs change
     private val _xdripTreatmentsCache = MutableStateFlow<List<BolusLog>>(emptyList())
 
     val todaysTreatments: StateFlow<List<BolusLog>> = _graphEvents.asStateFlow()
@@ -84,7 +82,6 @@ class DashboardViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        // Bug 2 fix: rebuild graphEvents from ALL three sources whenever local logs change
         viewModelScope.launch {
             allLogs.collect { logs ->
                 val dayStart = getLogicalDayStartTimestamp()
@@ -98,7 +95,6 @@ class DashboardViewModel(
         }
     }
 
-    // Single source of truth for graph event merging
     private fun rebuildGraphEvents(
         localLogs: List<BolusLog>,
         xdripTreatments: List<BolusLog>,
@@ -111,24 +107,35 @@ class DashboardViewModel(
         _graphEvents.value = combined
     }
 
-    fun fetchHistoryData(isCgmEnabled: Boolean) {
+    // Removed isCgmEnabled parameter — reads from settings internally
+    fun fetchHistoryData() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                if (isCgmEnabled) {
+                val isCgmEnabled = settings.value.isCgmEnabled
+                val isPumpUser = settings.value.isPumpUser
+                val hcWorkouts = _hcWorkoutLogs.value
+
+                if (isCgmEnabled && isPumpUser) {
+                    // Pump + CGM: merge local + xDrip treatments + HC workouts
                     val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
                     val xdripWithBg = xdripTreatments.map { treatment ->
                         treatment.copy(bloodGlucose = findClosestBg(treatment.timestamp, history))
                     }
-                    // Bug 7 fix: include HC workouts in history
-                    val hcWorkouts = _hcWorkoutLogs.value
                     withContext(Dispatchers.Main) {
                         _historyEvents.value = (allLogs.value + xdripWithBg + hcWorkouts)
                             .distinctBy { it.timestamp }
                             .sortedByDescending { it.timestamp }
                     }
+                } else if (isCgmEnabled) {
+                    // MDI + CGM: no CareLink treatments, just local + HC workouts
+                    withContext(Dispatchers.Main) {
+                        _historyEvents.value = (allLogs.value + hcWorkouts)
+                            .distinctBy { it.timestamp }
+                            .sortedByDescending { it.timestamp }
+                    }
                 } else {
-                    val hcWorkouts = _hcWorkoutLogs.value
+                    // Manual BG: local + HC workouts only
                     withContext(Dispatchers.Main) {
                         _historyEvents.value = (allLogs.value + hcWorkouts)
                             .distinctBy { it.timestamp }
@@ -141,25 +148,34 @@ class DashboardViewModel(
         }
     }
 
-    fun fetchDashboardData(isCgmEnabled: Boolean) {
+    // Removed isCgmEnabled parameter — reads from settings internally
+    fun fetchDashboardData() {
         fetchRecentWorkouts()
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val isCgmEnabled = settings.value.isCgmEnabled
+                val isPumpUser = settings.value.isPumpUser
                 val dayStart = getLogicalDayStartTimestamp()
+
                 if (isCgmEnabled) {
+                    // Always fetch CGM graph data if CGM is enabled
                     val latest = CgmHelper.getLatestBgFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
-                    val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
 
-                    val todayXDrip = xdripTreatments
-                        .filter { it.timestamp >= dayStart }
-                        .map { treatment ->
-                            treatment.copy(
-                                bloodGlucose = findClosestBg(treatment.timestamp, history)
-                            )
-                        }
+                    // Only fetch CareLink treatments for pump users
+                    val todayXDrip = if (isPumpUser) {
+                        val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
+                        xdripTreatments
+                            .filter { it.timestamp >= dayStart }
+                            .map { treatment ->
+                                treatment.copy(
+                                    bloodGlucose = findClosestBg(treatment.timestamp, history)
+                                )
+                            }
+                    } else {
+                        emptyList()
+                    }
 
-                    // Cache xDrip treatments so init block can use them on next DB write
                     _xdripTreatmentsCache.value = todayXDrip
 
                     withContext(Dispatchers.Main) {
@@ -207,9 +223,7 @@ class DashboardViewModel(
 
     fun fetchRecentWorkouts() {
         val helper = healthConnectHelper ?: return
-        // Bug 3 fix: run entirely on IO, only touch StateFlows on Main
         viewModelScope.launch(Dispatchers.IO) {
-            // Bug 4 fix: query StepsRecord once, reuse for both getDailySteps and detectWalkingFromSteps
             val stepRecords = helper.getRawStepRecords()
             val steps = stepRecords.sumOf { it.count }
             val detectedWalks = helper.detectWalkingFromSteps(stepRecords)
@@ -265,7 +279,7 @@ class DashboardViewModel(
 
             withContext(Dispatchers.Main) {
                 _recentWorkouts.value = records
-                _dailySteps.value = steps  // Bug 6 fix: actually persist steps
+                _dailySteps.value = steps
                 _hcWorkoutLogs.value = allWorkouts
                 val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
                 rebuildGraphEvents(
@@ -305,11 +319,11 @@ class DashboardViewModel(
     ) {
         val currentSettings = settings.value
         val context = PatientContext(
-            therapyType = TherapyType.fromString(currentSettings.therapyType),
+            therapyType = currentSettings.therapyTypeEnum,
             bolusSettings = currentSettings,
             currentBG = log.bloodGlucose,
-            hasCGM = false,
-            cgmTrend = CgmTrend.NONE,
+            hasCGM = currentSettings.isCgmEnabled,
+            cgmTrend = CgmTrend.NONE, // post-workout, no live trend needed
             activeInsulinIOB = log.administeredDose,
             plannedCarbs = log.carbs,
             isDoingSport = true,

@@ -262,11 +262,13 @@ class CalculateBolusViewModel(
     private fun performCalculation(showDialog: Boolean) {
         val state = _inputState.value
         val context = PatientContext(
-            therapyType = TherapyType.MDI_PENS,
+            therapyType = settings.value.therapyTypeEnum,
             bolusSettings = settings.value, // Use the live settings from the repository
             currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
-            hasCGM = false,
-            cgmTrend = CgmTrend.NONE,
+            hasCGM = settings.value.isCgmEnabled,
+            cgmTrend = if (settings.value.isCgmEnabled)
+                CgmTrend.fromString(_inputState.value.cgmTrendString)
+            else CgmTrend.NONE,
             activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
             plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
             isDoingSport = state.isSportModeActive,
