@@ -215,16 +215,13 @@ fun TimeScaledBgGraph(
                     val isPlanned = sportLog.status == "PLANNED"
                     val isAutoImported = sportLog.notes == "Auto-imported from Health Connect"
 
-                    val fillColor = when {
-                        isPlanned -> Color(0xFFFF9800).copy(alpha = 0.15f)
-                        isAutoImported -> Color(0xFF1565C0).copy(alpha = 0.13f)
-                        else -> Color(0xFF00695C).copy(alpha = 0.15f)
-                    }
-                    val borderColor = when {
-                        isPlanned -> Color(0xFFFF9800)
-                        isAutoImported -> Color(0xFF1E88E5)
-                        else -> Color(0xFF00695C)
-                    }
+                    val sportColor = Color(0xFF26A69A)
+
+                    val fillColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f)
+                    else sportColor.copy(alpha = 0.13f)
+
+                    val borderColor = if (isPlanned) Color(0xFFFF9800) else sportColor
+
                     val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
 
                     // Shaded band

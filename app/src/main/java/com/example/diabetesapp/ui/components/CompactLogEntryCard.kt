@@ -37,6 +37,8 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = formatter.format(Date(log.timestamp))
     val isAutoEntry = log.notes == "Auto-entry via CareLink"
+            || log.notes?.startsWith("Auto-imported") == true
+            || log.notes?.startsWith("Auto-detected") == true
 
     Card(
         onClick = onClick,
