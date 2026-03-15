@@ -185,7 +185,7 @@ class CalculateBolusViewModel(
             try {
                 val currentTime = System.currentTimeMillis()
                 val twentyMinutesMs = 20 * 60 * 1000L
-                val isCgmEnabled = settings.value.glucoseSource == "CGM"
+                val isCgmEnabled = settings.value.isCgmEnabled
 
                 var successfulFetch = false
 

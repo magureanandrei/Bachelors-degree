@@ -161,7 +161,7 @@ fun HomeScreen(
         // ... Header, Disclaimer, and Action Buttons stay the same ...
         HeaderSection()
         DisclaimerBanner()
-        DashboardActionButtons(onSmartBolusClick = onNavigateToCalculateBolus, onManualLogClick = onNavigateToLogReading)
+        DashboardActionButtons(onSmartBolusClick = onNavigateToCalculateBolus, onManualLogClick = onNavigateToLogReading, settings = settings)
 
         Card(
             modifier = Modifier.fillMaxWidth(),

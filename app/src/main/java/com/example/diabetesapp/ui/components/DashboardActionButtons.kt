@@ -22,21 +22,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.diabetesapp.data.models.BolusSettings
 
 @Composable
-fun DashboardActionButtons(onSmartBolusClick: () -> Unit, onManualLogClick: () -> Unit) {
+fun DashboardActionButtons(onSmartBolusClick: () -> Unit, onManualLogClick: () -> Unit, settings: BolusSettings) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Button(
             onClick = onSmartBolusClick,
-            modifier = Modifier
-                .weight(1f)
-                .height(64.dp),
+            modifier = Modifier.weight(1f).height(64.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
             shape = RoundedCornerShape(12.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(24.dp))
-                Text("Smart Bolus", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (settings.isAidPump) "Activity Advisor" else "Smart Bolus",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
