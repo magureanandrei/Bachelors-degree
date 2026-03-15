@@ -29,7 +29,7 @@ fun HistoryScreen(
     val context = LocalContext.current
     val database = remember { BolusDatabase.getDatabase(context) }
     val logRepository = remember { BolusLogRepository(database.bolusLogDao()) }
-    val settingsRepository = remember { BolusSettingsRepository(context) }
+    val settingsRepository = remember { BolusSettingsRepository.getInstance(context) }
 
     val viewModel: DashboardViewModel = viewModel(
         factory = DashboardViewModelFactory(logRepository, settingsRepository, context)
@@ -40,7 +40,7 @@ fun HistoryScreen(
     val isCgmEnabled = settings.glucoseSource == "CGM"
 
     LaunchedEffect(Unit) {
-        viewModel.fetchHistoryData(isCgmEnabled = isCgmEnabled)
+        viewModel.fetchHistoryData()
     }
 
     val groupedLogs = remember(historyEvents) {

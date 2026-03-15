@@ -8,21 +8,36 @@ import java.time.LocalTime
  * Defines how the patient receives their baseline insulin.
  */
 enum class TherapyType {
-    MDI_PENS,      // Multiple Daily Injections (Manual long-acting insulin)
-    STANDARD_PUMP, // Pump with manual temporary basal rates
-    AID_PUMP       // Automated Insulin Delivery (Smart pump like 780G)
+        MDI,
+        PUMP_STANDARD,
+        PUMP_AID;
+
+    companion object {
+        fun fromString(value: String): TherapyType = when (value) {
+            "PUMP_STANDARD" -> PUMP_STANDARD
+            "PUMP_AID" -> PUMP_AID
+            else -> MDI
+        }
+    }
 }
 
 /**
  * Defines the velocity of blood glucose changes from a Continuous Glucose Monitor.
  */
 enum class CgmTrend {
-    DOUBLE_UP,      // ↑↑ Rapidly rising (> 3 mg/dL/min)
-    SINGLE_UP,      // ↑ Rising (1-3 mg/dL/min)
-    FLAT,           // → Stable
-    SINGLE_DOWN,    // ↓ Falling (1-3 mg/dL/min)
-    DOUBLE_DOWN,    // ↓↓ Rapidly falling (> 3 mg/dL/min)
-    NONE            // Fingerstick user, or sensor is warming up/disconnected
+    DOUBLE_UP, SINGLE_UP, FLAT, SINGLE_DOWN, DOUBLE_DOWN, NONE;
+
+    companion object {
+        fun fromString(value: String): CgmTrend = when (value) {
+            "↑↑" -> DOUBLE_UP
+            "↑" -> SINGLE_UP
+            "→" -> FLAT
+            "↘" -> SINGLE_DOWN
+            "↓" -> SINGLE_DOWN
+            "↓↓" -> DOUBLE_DOWN
+            else -> NONE
+        }
+    }
 }
 
 // --- THE INPUT: Everything the algorithm needs to make a safe decision ---
@@ -52,6 +67,9 @@ data class PatientContext(
     val isHighStress: Boolean = false,
     val isIllness: Boolean = false,
     val isExtremeHeat: Boolean = false,
+
+    // 5. Passive Activity Context (from Health Connect)
+    val dailySteps: Long = 0L
 )
 
 // --- THE OUTPUT: What the algorithm gives back to the UI ---

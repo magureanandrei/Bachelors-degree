@@ -52,6 +52,7 @@ fun CalculateBolusScreen(
 
     val inputState by viewModel.inputState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val settings by viewModel.settings.collectAsState()
 
     // Reset state when leaving
     DisposableEffect(Unit) {
@@ -72,7 +73,11 @@ fun CalculateBolusScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Smart Bolus", fontWeight = FontWeight.SemiBold, fontSize = 20.sp) },
+                title = { Text(
+                    text = if (settings.isAidPump) "Sport & Meal Advisor" else "Smart Bolus",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 20.sp
+                ) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 },
@@ -90,7 +95,7 @@ fun CalculateBolusScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            SmartBolus(inputState = inputState, viewModel = viewModel)
+            SmartBolus(inputState = inputState, viewModel = viewModel, settings = settings)
 
             if (inputState.showResultDialog && inputState.calculatedDose != null) {
                 SmartBolusResultDialog(

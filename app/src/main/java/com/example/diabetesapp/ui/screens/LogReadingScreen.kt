@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.repository.BolusLogRepository
+import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.viewmodel.InsightType
 import com.example.diabetesapp.viewmodel.LogReadingViewModel
 import com.example.diabetesapp.viewmodel.LogReadingViewModelFactory
@@ -41,9 +42,10 @@ fun LogReadingScreen(
     val context = LocalContext.current
     val database = remember { BolusDatabase.getDatabase(context) }
     val repository = remember { BolusLogRepository(database.bolusLogDao()) }
+    val settingsRepository = remember { BolusSettingsRepository.getInstance(context) }
 
     val viewModel: LogReadingViewModel = viewModel(
-        factory = LogReadingViewModelFactory(repository)
+        factory = LogReadingViewModelFactory(repository,settingsRepository)
     )
 
     val uiState by viewModel.uiState.collectAsState()

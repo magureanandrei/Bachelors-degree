@@ -9,10 +9,13 @@ import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.models.CgmTrend
 import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.models.TherapyType
+import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -43,14 +46,17 @@ data class LogReadingState(
     val pendingClinicalSuggestion: String? = null
 )
 
-class LogReadingViewModel(private val repository: BolusLogRepository) : ViewModel() {
+class LogReadingViewModel(
+    private val repository: BolusLogRepository,
+    private val settingsRepository: BolusSettingsRepository
+) : ViewModel() {
     private val _uiState = MutableStateFlow(LogReadingState())
     val uiState: StateFlow<LogReadingState> = _uiState.asStateFlow()
 
-    private val dummySettings = BolusSettings(
-        icrMorning = 10f, icrNoon = 10f, icrEvening = 10f, icrNight = 10f,
-        isfMorning = 50f, isfNoon = 50f, isfEvening = 50f, isfNight = 50f,
-        targetBG = 100f
+    val settings: StateFlow<BolusSettings> = settingsRepository.settings.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        BolusSettings()
     )
 
     init { resetState() }
@@ -133,13 +139,14 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
 
         // We assume retrospective logs are always <= 0 minutes from now
         val minutesDiff = 0
+        val currentSettings = settings.value
 
         val context = PatientContext(
-            therapyType = TherapyType.MDI_PENS,
-            bolusSettings = dummySettings,
+            therapyType = currentSettings.therapyTypeEnum,
+            bolusSettings = currentSettings,
             currentBG = bg,
-            hasCGM = false,
-            cgmTrend = CgmTrend.NONE,
+            hasCGM = currentSettings.isCgmEnabled,
+            cgmTrend = CgmTrend.NONE, // log reading screen has no live trend
             activeInsulinIOB = insulin,
             plannedCarbs = carbs,
             isDoingSport = state.isSportModeActive,
@@ -147,7 +154,8 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
             sportIntensity = state.sportIntensityValue.toInt(),
             sportDurationMins = state.sportDurationMinutes.toInt(),
             minutesUntilSport = minutesDiff,
-            timeOfDay = LocalTime.now()
+            timeOfDay = LocalTime.now(),
+            dailySteps = 0L
         )
 
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
@@ -216,10 +224,13 @@ class LogReadingViewModel(private val repository: BolusLogRepository) : ViewMode
         }
     }
 }
-class LogReadingViewModelFactory(private val repository: BolusLogRepository) : ViewModelProvider.Factory {
+class LogReadingViewModelFactory(
+    private val repository: BolusLogRepository,
+    private val settingsRepository: BolusSettingsRepository
+    ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LogReadingViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST") return LogReadingViewModel(repository) as T
+            @Suppress("UNCHECKED_CAST") return LogReadingViewModel(repository, settingsRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
