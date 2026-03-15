@@ -331,7 +331,8 @@ class DashboardViewModel(
             sportIntensity = actualIntensity.toInt(),
             sportDurationMins = actualDuration.toInt(),
             minutesUntilSport = -actualDuration.toInt(),
-            timeOfDay = LocalTime.now()
+            timeOfDay = LocalTime.now(),
+            dailySteps = 0L
         )
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
         val newInsight = "Post-Workout Insight: ${decision.clinicalRationale}"

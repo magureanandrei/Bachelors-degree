@@ -93,6 +93,18 @@ object AlgorithmEngine {
         }
 
         // ---------------------------------------------------------
+        // 4.5 PASSIVE ACTIVITY MODIFIER (Steps Context)
+        // Full implementation in future iteration — structure only
+        // ---------------------------------------------------------
+        // TODO: wire activity multiplier into baseInsulin once
+        // per-patient sensitivity tuning is implemented
+        // val activityMultiplier = when {
+        //     context.dailySteps > 10000 -> 1.3
+        //     context.dailySteps > 5000  -> 1.15
+        //     else                       -> 1.0
+        // }
+
+        // ---------------------------------------------------------
         // 5. SPORT MODIFIERS & CARB SUGGESTIONS
         // ---------------------------------------------------------
         if (context.isDoingSport) {

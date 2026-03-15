@@ -67,6 +67,9 @@ data class PatientContext(
     val isHighStress: Boolean = false,
     val isIllness: Boolean = false,
     val isExtremeHeat: Boolean = false,
+
+    // 5. Passive Activity Context (from Health Connect)
+    val dailySteps: Long = 0L
 )
 
 // --- THE OUTPUT: What the algorithm gives back to the UI ---

@@ -261,32 +261,36 @@ class CalculateBolusViewModel(
 
     private fun performCalculation(showDialog: Boolean) {
         val state = _inputState.value
+        val currentSettings = settings.value
+
+        val cgmTrend = if (currentSettings.isCgmEnabled)
+            CgmTrend.fromString(state.cgmTrendString)
+        else
+            CgmTrend.NONE
+
         val context = PatientContext(
-            therapyType = settings.value.therapyTypeEnum,
-            bolusSettings = settings.value, // Use the live settings from the repository
+            therapyType = currentSettings.therapyTypeEnum,
+            bolusSettings = currentSettings,
             currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
-            hasCGM = settings.value.isCgmEnabled,
-            cgmTrend = if (settings.value.isCgmEnabled)
-                CgmTrend.fromString(_inputState.value.cgmTrendString)
-            else CgmTrend.NONE,
+            hasCGM = currentSettings.isCgmEnabled,
+            cgmTrend = cgmTrend,
             activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
             plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
             isDoingSport = state.isSportModeActive,
             sportType = state.sportType,
             sportIntensity = state.sportIntensityValue.toInt(),
             sportDurationMins = state.sportDurationMinutes.toInt(),
-            minutesUntilSport = state.minutesUntilSport.toInt(), // NOW WIRED TO SLIDER
+            minutesUntilSport = state.minutesUntilSport.toInt(),
             isHighStress = state.selectedFactor == "Stress",
             isIllness = state.selectedFactor == "Illness",
             isExtremeHeat = state.selectedFactor == "Heat",
-            timeOfDay = LocalTime.now()
+            timeOfDay = LocalTime.now(),
+            dailySteps = 0L
         )
 
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
-        val currentSettings = settings.value // <-- Grab the real, live settings from the database
 
         _inputState.value = _inputState.value.copy(
-            // Use currentSettings instead of dummySettings!
             standardDose = (context.plannedCarbs / currentSettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf()),
             calculatedDose = decision.suggestedInsulinDose,
             userAdjustedDose = decision.suggestedInsulinDose,

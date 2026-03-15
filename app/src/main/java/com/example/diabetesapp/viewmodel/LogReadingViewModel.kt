@@ -139,13 +139,14 @@ class LogReadingViewModel(
 
         // We assume retrospective logs are always <= 0 minutes from now
         val minutesDiff = 0
+        val currentSettings = settings.value
 
         val context = PatientContext(
-            therapyType = settings.value.therapyTypeEnum,
-            bolusSettings = settings.value,
+            therapyType = currentSettings.therapyTypeEnum,
+            bolusSettings = currentSettings,
             currentBG = bg,
-            hasCGM = false,
-            cgmTrend = CgmTrend.NONE,
+            hasCGM = currentSettings.isCgmEnabled,
+            cgmTrend = CgmTrend.NONE, // log reading screen has no live trend
             activeInsulinIOB = insulin,
             plannedCarbs = carbs,
             isDoingSport = state.isSportModeActive,
@@ -153,7 +154,8 @@ class LogReadingViewModel(
             sportIntensity = state.sportIntensityValue.toInt(),
             sportDurationMins = state.sportDurationMinutes.toInt(),
             minutesUntilSport = minutesDiff,
-            timeOfDay = LocalTime.now()
+            timeOfDay = LocalTime.now(),
+            dailySteps = 0L
         )
 
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
