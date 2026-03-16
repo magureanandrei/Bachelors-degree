@@ -61,7 +61,7 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsState()
 
     // Re-calculate day start when logs change
-    val logicalDayStart = remember(allLogs) { viewModel.getLogicalDayStartTimestamp() }
+    val logicalDayStart = remember { viewModel.get24hStartTimestamp() }
     val todaysLogs by viewModel.graphEvents.collectAsState()
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
     val graphEvents by viewModel.graphEvents.collectAsState()
@@ -132,11 +132,11 @@ fun HomeScreen(
     val cgmReadings by viewModel.cgmReadings.collectAsState()
 
     // Fetch the history when the logical day changes (or screen opens)
-    val isCgmEnabled = settings.glucoseSource == "CGM"
+    val isCgmEnabled = settings.isCgmEnabled
     val latestReading by viewModel.latestReading.collectAsState()
 
     // --- The 5-Minute Polling Engine ---
-    LaunchedEffect(logicalDayStart, settings.glucoseSource) {
+    LaunchedEffect(Unit) {
         // while(isActive) keeps this loop running endlessly in the background
         // as long as the Home Screen is open.
         while (isActive) {
@@ -204,7 +204,7 @@ fun HomeScreen(
             }
         }
 
-        Text("Today's Logs", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        Text("Last 24h", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
 
         if (todaysLogs.isEmpty()) {
             Box(

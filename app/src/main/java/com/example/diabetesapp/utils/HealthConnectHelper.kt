@@ -81,7 +81,7 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
 
             val minSessionMinutes = 7L
             val walkingStepsPerMin = 55.0
-            val maxGapMinutes = 5L
+            val maxGapMinutes = 8L
 
             stepRecords.sortedBy { it.startTime }.forEach { record ->
                 val durationSeconds = ChronoUnit.SECONDS.between(

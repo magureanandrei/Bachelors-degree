@@ -37,7 +37,7 @@ fun HistoryScreen(
 
     val historyEvents by viewModel.historyEvents.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    val isCgmEnabled = settings.glucoseSource == "CGM"
+    val isCgmEnabled = settings.isCgmEnabled
 
     LaunchedEffect(Unit) {
         viewModel.fetchHistoryData()

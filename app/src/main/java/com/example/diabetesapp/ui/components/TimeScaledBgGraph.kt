@@ -49,28 +49,18 @@ fun TimeScaledBgGraph(
 ) {
     val textMeasurer = rememberTextMeasurer()
     val scrollState = rememberScrollState()
-    val density = androidx.compose.ui.platform.LocalDensity.current
 
     val bolusPainter = rememberVectorPainter(Icons.Default.AutoFixHigh)
     val mealPainter = rememberVectorPainter(Icons.Default.Restaurant)
     val manualInsulinPainter = rememberVectorPainter(Icons.Default.Vaccines)
 
-    // Auto-scroll to current time on load
+    // Always scroll to right edge (current time) since we're showing last 24h
     LaunchedEffect(scrollState.maxValue) {
         if (scrollState.maxValue > 0) {
-            val twentyFourHoursMs = 24 * 60 * 60 * 1000f
-            val currentTime = System.currentTimeMillis()
-            val elapsedMs = (currentTime - dayStartTimestamp).coerceIn(0L, twentyFourHoursMs.toLong())
-            val fraction = elapsedMs / twentyFourHoursMs
-            val totalWidthPx = with(density) { 1200.dp.toPx() }
-            val currentXPx = fraction * totalWidthPx
-            val viewportWidthPx = totalWidthPx - scrollState.maxValue
-            val targetScroll = (currentXPx - (viewportWidthPx / 2f)).toInt().coerceIn(0, scrollState.maxValue)
-            scrollState.scrollTo(targetScroll)
+            scrollState.scrollTo(scrollState.maxValue)
         }
     }
 
-    // Y-Axis Scale
     val minBg = 40f
     val maxBg = 350f
     val rangeBg = maxBg - minBg
@@ -78,12 +68,11 @@ fun TimeScaledBgGraph(
     val bottomPadding = 120f
 
     Row(modifier = modifier) {
-        // --- FIXED Y-AXIS (Pinned to the left) ---
+        // --- FIXED Y-AXIS ---
         Canvas(modifier = Modifier.width(42.dp).fillMaxHeight()) {
             val graphHeight = size.height - bottomPadding - topPadding
             fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
 
-            // BG Labels based on Safety Limits
             val yLabels = listOf(hypoLimit, targetBg, hyperLimit, 300f)
             yLabels.forEach { bg ->
                 drawText(
@@ -98,7 +87,6 @@ fun TimeScaledBgGraph(
                 )
             }
 
-            // Swimlane Labels
             val carbsY = size.height - 100f
             val insulinY = size.height - 60f
             drawText(textMeasurer = textMeasurer, text = "Carbs", style = TextStyle(color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold), topLeft = Offset(0f, carbsY - 15f))
@@ -118,7 +106,7 @@ fun TimeScaledBgGraph(
                 val carbsY = size.height - 100f
                 val insulinY = size.height - 60f
 
-                // 1. DYNAMIC TARGET RANGE SHADING
+                // 1. TARGET RANGE SHADING
                 drawRect(
                     color = Color(0xFFE8F5E9).copy(alpha = 0.7f),
                     topLeft = Offset(0f, bgToY(hyperLimit)),
@@ -133,7 +121,6 @@ fun TimeScaledBgGraph(
                         hyperLimit -> Color(0xFFFFB74D).copy(alpha = 0.4f)
                         else -> Color(0xFFA5D6A7)
                     }
-
                     drawLine(
                         color = color,
                         start = Offset(0f, bgToY(bg)),
@@ -148,7 +135,7 @@ fun TimeScaledBgGraph(
                 drawLine(Color(0xFFF5F5F5), Offset(0f, size.height - 80f), Offset(graphWidth, size.height - 80f), 1f)
                 drawLine(Color(0xFFEEEEEE), Offset(0f, size.height - 40f), Offset(graphWidth, size.height - 40f), 2f)
 
-                // --- 3.5 CONTINUOUS CGM LINE ---
+                // 3.5 CONTINUOUS CGM LINE
                 if (cgmReadings.isNotEmpty()) {
                     val cgmPath = Path()
                     var isFirstPoint = true
@@ -160,7 +147,6 @@ fun TimeScaledBgGraph(
                     validReadings.forEach { reading ->
                         val x = timeToX(reading.timestamp)
                         val y = bgToY(reading.bgValue.toFloat().coerceIn(minBg, maxBg))
-
                         val isGap = previousTimestamp > 0L && (reading.timestamp - previousTimestamp > maxGapMs)
 
                         if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + twentyFourHoursMs.toLong()) {
@@ -174,36 +160,26 @@ fun TimeScaledBgGraph(
                         previousTimestamp = reading.timestamp
                     }
 
-                    // --- NEW: Dynamic Color Brush ---
-                    // 1. Find the exact pixel heights of your safety limits
                     val hyperY = bgToY(hyperLimit)
                     val hypoY = bgToY(hypoLimit)
-
-                    // 2. Convert those pixels into a percentage of the total canvas height (0.0 to 1.0)
                     val hyperFraction = (hyperY / size.height).coerceIn(0f, 1f)
                     val hypoFraction = (hypoY / size.height).coerceIn(0f, 1f)
 
-                    // 3. Create a brush that snaps to new colors exactly at those percentages
                     val cgmBrush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                        0.0f to Color(0xFFFFB74D).copy(alpha = 0.9f),          // Orange/Yellow above target
-                        hyperFraction to Color(0xFFFFB74D).copy(alpha = 0.9f), // Keep Orange down to the hyper line
-                        hyperFraction + 0.001f to Color(0xFF00897B).copy(alpha = 0.8f), // Snap instantly to Teal
-                        hypoFraction to Color(0xFF00897B).copy(alpha = 0.8f),           // Keep Teal down to the hypo line
-                        hypoFraction + 0.001f to Color(0xFFE53935).copy(alpha = 0.9f),  // Snap instantly to Red
-                        1.0f to Color(0xFFE53935).copy(alpha = 0.9f),          // Keep Red down to the bottom
+                        0.0f to Color(0xFFFFB74D).copy(alpha = 0.9f),
+                        hyperFraction to Color(0xFFFFB74D).copy(alpha = 0.9f),
+                        hyperFraction + 0.001f to Color(0xFF00897B).copy(alpha = 0.8f),
+                        hypoFraction to Color(0xFF00897B).copy(alpha = 0.8f),
+                        hypoFraction + 0.001f to Color(0xFFE53935).copy(alpha = 0.9f),
+                        1.0f to Color(0xFFE53935).copy(alpha = 0.9f),
                         startY = 0f,
                         endY = size.height
                     )
 
-                    // Paint the line onto the canvas using the brush instead of a solid color
                     drawPath(
                         path = cgmPath,
-                        brush = cgmBrush, // <-- Applying the magic brush here
-                        style = Stroke(
-                            width = 3.dp.toPx(),
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
+                        brush = cgmBrush,
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
                 }
 
@@ -213,98 +189,82 @@ fun TimeScaledBgGraph(
                     val endX = timeToX(sportLog.timestamp + (sportLog.sportDuration!!.toLong() * 60 * 1000L))
                     val bandWidth = (endX - startX).coerceAtLeast(4f)
                     val isPlanned = sportLog.status == "PLANNED"
-                    val isAutoImported = sportLog.notes == "Auto-imported from Health Connect"
-
                     val sportColor = Color(0xFF26A69A)
-
-                    val fillColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f)
-                    else sportColor.copy(alpha = 0.13f)
-
+                    val fillColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f) else sportColor.copy(alpha = 0.13f)
                     val borderColor = if (isPlanned) Color(0xFFFF9800) else sportColor
-
                     val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
 
-                    // Shaded band
                     drawRect(color = fillColor, topLeft = Offset(startX, topPadding), size = Size(bandWidth, graphHeight))
-
-                    // Left and right border lines
                     drawLine(borderColor, Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
                     drawLine(borderColor, Offset(startX + bandWidth, topPadding), Offset(startX + bandWidth, topPadding + graphHeight), 3f, pathEffect = pathEffect)
 
-                    // Label inside the band: sport type + duration
                     val label = "${sportLog.sportType ?: "Workout"} · ${sportLog.sportDuration.toInt()}m"
                     val labelResult = textMeasurer.measure(
                         label,
-                        style = TextStyle(
-                            color = borderColor,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        style = TextStyle(color = borderColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
-                    // Only draw label if band is wide enough
                     if (bandWidth > labelResult.size.height + 4f) {
                         val labelX = startX + 4f
                         val labelY = topPadding + graphHeight / 2f - labelResult.size.width / 2f
                         translate(left = labelX, top = labelY) {
-                            rotate(90f) {
-                                drawText(labelResult)
-                            }
+                            rotate(90f) { drawText(labelResult) }
                         }
                     }
                 }
 
-                // 5. X-AXIS TIME LABELS
-                val hourStrings = listOf("12 AM", "3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM", "12 AM")
+                // 5. X-AXIS TIME LABELS — computed from actual timestamps for rolling 24h
                 for (i in 0..8) {
-                    // Multiplies i by 3 hours to match the labels above
-                    val xPos = timeToX(dayStartTimestamp + (i * 3 * 60 * 60 * 1000L))
-
+                    val tickTimestamp = dayStartTimestamp + (i * 3 * 60 * 60 * 1000L)
+                    val xPos = timeToX(tickTimestamp)
+                    val cal = java.util.Calendar.getInstance().apply { timeInMillis = tickTimestamp }
+                    val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                    val label = when {
+                        hour == 0 -> "12 AM"
+                        hour < 12 -> "$hour AM"
+                        hour == 12 -> "12 PM"
+                        else -> "${hour - 12} PM"
+                    }
                     drawLine(Color(0xFFF5F5F5), Offset(xPos, topPadding), Offset(xPos, size.height - 40f), 1f)
                     drawText(
                         textMeasurer = textMeasurer,
-                        text = hourStrings[i],
+                        text = label,
                         style = TextStyle(color = Color.Gray, fontSize = 10.sp),
                         topLeft = Offset(xPos - 20f, size.height - 30f)
                     )
                 }
 
-                // 6. TREND LINE & DOTS
+                // 6. MANUAL BG DOTS (no line — fingerstick readings are discrete points)
                 if (!isCgmEnabled) {
                     val bgLogs = logs.filter {
-                        it.bloodGlucose > 0 && it.notes != "Auto-entry via CareLink"
+                        it.bloodGlucose > 0
+                                && it.notes != "Auto-entry via CareLink"
+                                && it.notes?.startsWith("Auto-imported") != true
+                                && it.notes?.startsWith("Auto-detected") != true
                     }.sortedBy { it.timestamp }
 
-                    if (bgLogs.isNotEmpty()) {
-                        val path = Path()
-                        val points = mutableListOf<Offset>()
-
-                        bgLogs.forEachIndexed { index, log ->
-                            val x = timeToX(log.timestamp)
-                            val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
-                            points.add(Offset(x, y))
-                            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    bgLogs.forEach { log ->
+                        val x = timeToX(log.timestamp)
+                        val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
+                        val bg = log.bloodGlucose.toFloat()
+                        val dotColor = when {
+                            bg > hyperLimit -> Color(0xFFFFB74D)
+                            bg < hypoLimit -> Color(0xFFE53935)
+                            else -> Color(0xFF00897B)
                         }
-
-                        drawPath(
-                            path = path,
-                            color = Color(0xFF00897B),
-                            style = Stroke(
-                                width = 4f,
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            )
+                        // Larger dots, no connecting line
+                        drawCircle(color = Color.White, radius = 10f, center = Offset(x, y))
+                        drawCircle(color = dotColor, radius = 8f, center = Offset(x, y))
+                        // BG value label above dot
+                        drawText(
+                            textMeasurer = textMeasurer,
+                            text = log.bloodGlucose.toInt().toString(),
+                            style = TextStyle(
+                                color = dotColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            topLeft = Offset(x - 10f, y - 24f)
                         )
-
-                        points.forEachIndexed { index, point ->
-                            val bg = bgLogs[index].bloodGlucose.toFloat()
-                            val dotColor = when {
-                                bg > hyperLimit -> Color(0xFFFFB74D) // High
-                                bg < hypoLimit -> Color(0xFFE53935)  // Low
-                                else -> Color(0xFF00897B)            // Target
-                            }
-                            drawCircle(color = Color.White, radius = 8f, center = point)
-                            drawCircle(color = dotColor, radius = 6f, center = point)
-                        }
                     }
                 }
 

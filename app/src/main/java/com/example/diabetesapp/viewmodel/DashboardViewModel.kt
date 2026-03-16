@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,9 +61,6 @@ class DashboardViewModel(
 
     val unverifiedWorkout = MutableStateFlow<BolusLog?>(null)
 
-    private val _logicalDayStart = MutableStateFlow(getLogicalDayStartTimestamp())
-    val logicalDayStartFlow: StateFlow<Long> = _logicalDayStart.asStateFlow()
-
     private val _historyEvents = MutableStateFlow<List<BolusLog>>(emptyList())
     val historyEvents: StateFlow<List<BolusLog>> = _historyEvents.asStateFlow()
 
@@ -76,15 +74,18 @@ class DashboardViewModel(
 
     private val _xdripTreatmentsCache = MutableStateFlow<List<BolusLog>>(emptyList())
 
-    val todaysTreatments: StateFlow<List<BolusLog>> = _graphEvents.asStateFlow()
-        .combine(logicalDayStartFlow) { events, dayStart ->
+    // todaysTreatments now computes 24h start fresh each time instead of
+    // depending on a changing StateFlow which caused recomposition cascades
+    val todaysTreatments: StateFlow<List<BolusLog>> = _graphEvents
+        .map { events ->
+            val dayStart = get24hStartTimestamp()
             events.filter { it.timestamp >= dayStart && (it.carbs > 0 || it.administeredDose >= 1.5f) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         viewModelScope.launch {
             allLogs.collect { logs ->
-                val dayStart = getLogicalDayStartTimestamp()
+                val dayStart = get24hStartTimestamp()
                 val todayLocal = logs.filter { it.timestamp >= dayStart }
                 rebuildGraphEvents(
                     localLogs = todayLocal,
@@ -107,7 +108,6 @@ class DashboardViewModel(
         _graphEvents.value = combined
     }
 
-    // Removed isCgmEnabled parameter — reads from settings internally
     fun fetchHistoryData() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -116,7 +116,6 @@ class DashboardViewModel(
                 val hcWorkouts = _hcWorkoutLogs.value
 
                 if (isCgmEnabled && isPumpUser) {
-                    // Pump + CGM: merge local + xDrip treatments + HC workouts
                     val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
                     val xdripWithBg = xdripTreatments.map { treatment ->
@@ -128,14 +127,12 @@ class DashboardViewModel(
                             .sortedByDescending { it.timestamp }
                     }
                 } else if (isCgmEnabled) {
-                    // MDI + CGM: no CareLink treatments, just local + HC workouts
                     withContext(Dispatchers.Main) {
                         _historyEvents.value = (allLogs.value + hcWorkouts)
                             .distinctBy { it.timestamp }
                             .sortedByDescending { it.timestamp }
                     }
                 } else {
-                    // Manual BG: local + HC workouts only
                     withContext(Dispatchers.Main) {
                         _historyEvents.value = (allLogs.value + hcWorkouts)
                             .distinctBy { it.timestamp }
@@ -148,21 +145,18 @@ class DashboardViewModel(
         }
     }
 
-    // Removed isCgmEnabled parameter — reads from settings internally
     fun fetchDashboardData() {
         fetchRecentWorkouts()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val isCgmEnabled = settings.value.isCgmEnabled
                 val isPumpUser = settings.value.isPumpUser
-                val dayStart = getLogicalDayStartTimestamp()
+                val dayStart = get24hStartTimestamp()
 
                 if (isCgmEnabled) {
-                    // Always fetch CGM graph data if CGM is enabled
                     val latest = CgmHelper.getLatestBgFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
 
-                    // Only fetch CareLink treatments for pump users
                     val todayXDrip = if (isPumpUser) {
                         val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
                         xdripTreatments
@@ -221,6 +215,9 @@ class DashboardViewModel(
         return calendar.timeInMillis
     }
 
+    fun get24hStartTimestamp(): Long =
+        System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+
     fun fetchRecentWorkouts() {
         val helper = healthConnectHelper ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -231,7 +228,7 @@ class DashboardViewModel(
 
             Log.d("HC_Steps", "Today's steps: $steps")
 
-            val dayStart = getLogicalDayStartTimestamp()
+            val dayStart = get24hStartTimestamp()
 
             val confirmedWorkoutLogs = records.mapNotNull { record ->
                 val startMs = record.startTime.toEpochMilli()
