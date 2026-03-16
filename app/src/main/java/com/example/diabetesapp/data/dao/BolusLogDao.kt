@@ -29,5 +29,8 @@ interface BolusLogDao {
     @Query("SELECT * FROM bolus_log WHERE bloodGlucose > 0 ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLatestManualBgLog(): BolusLog?
 
+    @Query("SELECT * FROM bolus_log WHERE ABS(timestamp - :timestamp) <= :windowMs ORDER BY ABS(timestamp - :timestamp) ASC")
+    suspend fun getLogsNearTimestamp(timestamp: Long, windowMs: Long): List<BolusLog>
+
 }
 
