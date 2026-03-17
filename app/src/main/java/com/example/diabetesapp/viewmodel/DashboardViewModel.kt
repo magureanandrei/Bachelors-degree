@@ -112,27 +112,23 @@ class DashboardViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val isCgmEnabled = settings.value.isCgmEnabled
-                val isPumpUser = settings.value.isPumpUser
+                val isAidPump = settings.value.isAidPump
                 val hcWorkouts = _hcWorkoutLogs.value
 
-                if (isCgmEnabled && isPumpUser) {
+                if (isCgmEnabled && isAidPump) {
+                    // AID pump + CGM: include CareLink treatments
                     val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
-                    val xdripWithBg = xdripTreatments.map { treatment ->
-                        treatment.copy(bloodGlucose = findClosestBg(treatment.timestamp, history))
+                    val xdripWithBg = xdripTreatments.map {
+                        it.copy(bloodGlucose = findClosestBg(it.timestamp, history))
                     }
                     withContext(Dispatchers.Main) {
                         _historyEvents.value = (allLogs.value + xdripWithBg + hcWorkouts)
                             .distinctBy { it.timestamp }
                             .sortedByDescending { it.timestamp }
                     }
-                } else if (isCgmEnabled) {
-                    withContext(Dispatchers.Main) {
-                        _historyEvents.value = (allLogs.value + hcWorkouts)
-                            .distinctBy { it.timestamp }
-                            .sortedByDescending { it.timestamp }
-                    }
                 } else {
+                    // Everyone else: local logs + HC workouts only
                     withContext(Dispatchers.Main) {
                         _historyEvents.value = (allLogs.value + hcWorkouts)
                             .distinctBy { it.timestamp }
@@ -150,17 +146,18 @@ class DashboardViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val isCgmEnabled = settings.value.isCgmEnabled
-                val isPumpUser = settings.value.isPumpUser
+                val isAidPump = settings.value.isAidPump  // was isPumpUser
                 val dayStart = get24hStartTimestamp()
 
                 if (isCgmEnabled) {
                     val latest = CgmHelper.getLatestBgFromXDrip()
                     val history = CgmHelper.getBgHistoryFromXDrip()
 
-                    val todayXDrip = if (isPumpUser) {
+                    // CareLink only for AID pump
+                    val todayXDrip = if (isAidPump) {
                         val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
                         xdripTreatments
-                            .filter { it.timestamp >= dayStart }
+                            .filter { it.timestamp >= dayStart }  // removed effectiveDataStart filter
                             .map { treatment ->
                                 treatment.copy(
                                     bloodGlucose = findClosestBg(treatment.timestamp, history)
@@ -174,7 +171,7 @@ class DashboardViewModel(
 
                     withContext(Dispatchers.Main) {
                         _latestReading.value = latest
-                        _cgmReadings.value = history
+                        _cgmReadings.value = history  // removed glucoseSourceChangedAt filter
                         val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
                         rebuildGraphEvents(
                             localLogs = localLogs,
@@ -216,7 +213,7 @@ class DashboardViewModel(
     }
 
     fun get24hStartTimestamp(): Long =
-        System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+        System.currentTimeMillis() - 25 * 60 * 60 * 1000L
 
     fun fetchRecentWorkouts() {
         val helper = healthConnectHelper ?: return

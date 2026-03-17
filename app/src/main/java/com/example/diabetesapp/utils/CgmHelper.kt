@@ -105,7 +105,7 @@ object CgmHelper {
 
         return try {
             // xDrip's local shortcut for historical data is /sgv.json
-            val url = URL("http://127.0.0.1:17580/sgv.json?count=288")
+            val url = URL("http://127.0.0.1:17580/sgv.json?count=320")
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = 5000

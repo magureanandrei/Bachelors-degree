@@ -33,18 +33,20 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diabetesapp.data.models.BolusLog
+import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.utils.CgmReading
-import kotlin.collections.forEach
 
 @Composable
 fun TimeScaledBgGraph(
     logs: List<BolusLog>,
     cgmReadings: List<CgmReading> = emptyList(),
     dayStartTimestamp: Long,
+    endTimestamp: Long,
     targetBg: Float = 100f,
     hypoLimit: Float = 70f,
     hyperLimit: Float = 180f,
     isCgmEnabled: Boolean,
+    settings: BolusSettings,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -54,11 +56,13 @@ fun TimeScaledBgGraph(
     val mealPainter = rememberVectorPainter(Icons.Default.Restaurant)
     val manualInsulinPainter = rememberVectorPainter(Icons.Default.Vaccines)
 
-    // Always scroll to right edge (current time) since we're showing last 24h
     LaunchedEffect(scrollState.maxValue) {
-        if (scrollState.maxValue > 0) {
-            scrollState.scrollTo(scrollState.maxValue)
-        }
+        val totalWindowMs = (endTimestamp - dayStartTimestamp).toFloat()
+        val thirtyMinMs = 60 * 60 * 1000f
+        val futureBufferFraction = thirtyMinMs / totalWindowMs
+        val targetScroll = (scrollState.maxValue * (1f - futureBufferFraction)).toInt()
+            .coerceIn(0, scrollState.maxValue)
+        scrollState.scrollTo(targetScroll)
     }
 
     val minBg = 40f
@@ -70,6 +74,7 @@ fun TimeScaledBgGraph(
     Row(modifier = modifier) {
         // --- FIXED Y-AXIS ---
         Canvas(modifier = Modifier.width(42.dp).fillMaxHeight()) {
+            if (size.width <= 0 || size.height <= 0) return@Canvas
             val graphHeight = size.height - bottomPadding - topPadding
             fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
 
@@ -96,13 +101,14 @@ fun TimeScaledBgGraph(
         // --- SCROLLABLE GRAPH AREA ---
         Box(modifier = Modifier.weight(1f).horizontalScroll(scrollState)) {
             Canvas(modifier = Modifier.width(1200.dp).fillMaxHeight()) {
+                if (size.width <= 0 || size.height <= 0) return@Canvas
+
                 val graphWidth = size.width
                 val graphHeight = size.height - bottomPadding - topPadding
-                val twentyFourHoursMs = 24 * 60 * 60 * 1000f
+                val windowMs = (endTimestamp - dayStartTimestamp).toFloat()
 
                 fun bgToY(bg: Float): Float = topPadding + graphHeight - ((bg - minBg) / rangeBg) * graphHeight
-                fun timeToX(timestamp: Long): Float = ((timestamp - dayStartTimestamp).coerceIn(0, twentyFourHoursMs.toLong()) / twentyFourHoursMs) * graphWidth
-
+                fun timeToX(timestamp: Long): Float = ((timestamp - dayStartTimestamp).coerceIn(0, windowMs.toLong()) / windowMs) * graphWidth
                 val carbsY = size.height - 100f
                 val insulinY = size.height - 60f
 
@@ -142,14 +148,12 @@ fun TimeScaledBgGraph(
                     var previousTimestamp = 0L
                     val maxGapMs = 16 * 60 * 1000L
 
-                    val validReadings = cgmReadings.filter { it.bgValue > 0 }
-
-                    validReadings.forEach { reading ->
+                    cgmReadings.filter { it.bgValue > 0 }.forEach { reading ->
                         val x = timeToX(reading.timestamp)
                         val y = bgToY(reading.bgValue.toFloat().coerceIn(minBg, maxBg))
                         val isGap = previousTimestamp > 0L && (reading.timestamp - previousTimestamp > maxGapMs)
 
-                        if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + twentyFourHoursMs.toLong()) {
+                        if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + windowMs.toLong()) {
                             if (isFirstPoint || isGap) {
                                 cgmPath.moveTo(x, y)
                                 isFirstPoint = false
@@ -212,7 +216,7 @@ fun TimeScaledBgGraph(
                     }
                 }
 
-                // 5. X-AXIS TIME LABELS — computed from actual timestamps for rolling 24h
+                // 5. X-AXIS TIME LABELS
                 for (i in 0..8) {
                     val tickTimestamp = dayStartTimestamp + (i * 3 * 60 * 60 * 1000L)
                     val xPos = timeToX(tickTimestamp)
@@ -233,7 +237,7 @@ fun TimeScaledBgGraph(
                     )
                 }
 
-                // 6. MANUAL BG DOTS (no line — fingerstick readings are discrete points)
+                // 6. MANUAL BG DOTS
                 if (!isCgmEnabled) {
                     val bgLogs = logs.filter {
                         it.bloodGlucose > 0
@@ -251,10 +255,8 @@ fun TimeScaledBgGraph(
                             bg < hypoLimit -> Color(0xFFE53935)
                             else -> Color(0xFF00897B)
                         }
-                        // Larger dots, no connecting line
                         drawCircle(color = Color.White, radius = 10f, center = Offset(x, y))
                         drawCircle(color = dotColor, radius = 8f, center = Offset(x, y))
-                        // BG value label above dot
                         drawText(
                             textMeasurer = textMeasurer,
                             text = log.bloodGlucose.toInt().toString(),
@@ -269,12 +271,16 @@ fun TimeScaledBgGraph(
                 }
 
                 // 7. SWIMLANE ICONS
-                val dayEndTimestamp = dayStartTimestamp + twentyFourHoursMs.toLong()
+                val dayEndTimestamp = dayStartTimestamp + windowMs.toLong()
                 logs.filter { it.timestamp in dayStartTimestamp..dayEndTimestamp }.forEach { log ->
                     val x = timeToX(log.timestamp)
                     val iconRadius = 16f
 
-                    fun drawSwimlaneIcon(yPos: Float, painter: androidx.compose.ui.graphics.vector.VectorPainter, tint: Color) {
+                    fun drawSwimlaneIcon(
+                        yPos: Float,
+                        painter: androidx.compose.ui.graphics.vector.VectorPainter,
+                        tint: Color
+                    ) {
                         drawCircle(color = Color.White, radius = iconRadius, center = Offset(x, yPos))
                         drawCircle(color = tint.copy(alpha = 0.2f), radius = iconRadius, center = Offset(x, yPos), style = Stroke(width = 2f))
                         translate(left = x - 11f, top = yPos - 11f) {

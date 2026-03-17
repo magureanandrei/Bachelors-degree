@@ -62,6 +62,7 @@ fun HomeScreen(
 
     // Re-calculate day start when logs change
     val logicalDayStart = remember { viewModel.get24hStartTimestamp() }
+    val graphEndTimestamp = remember { System.currentTimeMillis() + (2.5 * 60 * 60 * 1000L).toLong() }
     val todaysLogs by viewModel.graphEvents.collectAsState()
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
     val graphEvents by viewModel.graphEvents.collectAsState()
@@ -193,10 +194,12 @@ fun HomeScreen(
                             logs = graphEvents,
                             cgmReadings = cgmReadings,
                             dayStartTimestamp = logicalDayStart,
+                            endTimestamp = graphEndTimestamp,
                             targetBg = settings.targetBG,
                             hypoLimit = settings.hypoLimit,
                             hyperLimit = settings.hyperLimit,
                             isCgmEnabled = isCgmEnabled,
+                            settings=settings,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -213,7 +216,7 @@ fun HomeScreen(
                     .padding(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Your log is empty for today.", color = Color.Gray)
+                Text("No entries in the last 24 hours.", color = Color.Gray)
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
