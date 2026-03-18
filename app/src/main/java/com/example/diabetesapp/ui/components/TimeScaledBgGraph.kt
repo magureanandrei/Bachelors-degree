@@ -232,23 +232,18 @@ fun TimeScaledBgGraph(
                 // 3.6 HYPO PREDICTION LINE
                 hypoPrediction?.let { prediction ->
                     if (prediction.projectionPoints.size >= 2) {
-                        val predPath = Path()
-                        var isFirst = true
-                        prediction.projectionPoints.forEach { (timestamp, bg) ->
-                            val x = timeToX(timestamp)
-                            val y = bgToY(bg.coerceIn(minBg, maxBg))
-                            if (isFirst) { predPath.moveTo(x, y); isFirst = false }
-                            else predPath.lineTo(x, y)
-                        }
-                        drawPath(
-                            path = predPath,
-                            color = Color(0xFFE53935).copy(alpha = 0.6f),
-                            style = Stroke(
-                                width = 2.5f.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 6f), 0f)
+                        val points = prediction.projectionPoints
+                        points.zipWithNext().forEachIndexed { index, (from, to) ->
+                            val progress = index.toFloat() / points.size
+                            val fadedColor = Color(0xFFE53935).copy(alpha = 0.85f * (1f - progress * 0.6f))
+                            drawLine(
+                                color = fadedColor,
+                                start = Offset(timeToX(from.first), bgToY(from.second.coerceIn(minBg, maxBg))),
+                                end = Offset(timeToX(to.first), bgToY(to.second.coerceIn(minBg, maxBg))),
+                                strokeWidth = 2.5f.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 8f), 0f)
                             )
-                        )
+                        }
                     }
                 }
 
