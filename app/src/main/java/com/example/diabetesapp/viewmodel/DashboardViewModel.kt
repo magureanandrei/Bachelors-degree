@@ -257,7 +257,6 @@ class DashboardViewModel(
                     else -> "Workout"
                 }
 
-                // Try to get avg heart rate to infer intensity
                 val avgHr = helper.getAverageHeartRateForSession(record.startTime, record.endTime)
                 val intensity = when {
                     avgHr == null -> "Medium"
@@ -294,7 +293,6 @@ class DashboardViewModel(
                 val walkStart = walk.timestamp
                 val walkEnd = walkStart + (walk.sportDuration!! * 60 * 1000L).toLong()
                 val walkDuration = walkEnd - walkStart
-
                 stravaActivities.none { activity ->
                     val actStart = activity.timestamp
                     val actEnd = actStart + (activity.sportDuration!! * 60 * 1000L).toLong()
@@ -306,6 +304,20 @@ class DashboardViewModel(
             }
 
             val allWorkouts = (stravaActivities + filteredWalks).sortedBy { it.timestamp }
+
+            // Persist any new activities that aren't already in the DB
+            val existingLogs = allLogs.value
+            allWorkouts.forEach { workout ->
+                val alreadySaved = existingLogs.any { existing ->
+                    existing.isSportModeActive &&
+                            Math.abs(existing.timestamp - workout.timestamp) <= 5 * 60 * 1000L &&
+                            existing.sportType == workout.sportType
+                }
+                if (!alreadySaved) {
+                    repository.insert(workout)
+                    Log.d("HC_Persist", "Saved new activity: ${workout.sportType} at ${workout.timestamp}")
+                }
+            }
 
             withContext(Dispatchers.Main) {
                 _recentWorkouts.value = records
