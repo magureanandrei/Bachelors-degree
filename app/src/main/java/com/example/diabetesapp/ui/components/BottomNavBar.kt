@@ -1,12 +1,19 @@
 package com.example.diabetesapp.ui.components
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 sealed class BottomNavItem(
     val route: String,
@@ -36,20 +43,23 @@ fun BottomNavBar(
     NavigationBar(
         containerColor = Color.White,
         contentColor = Color(0xFF00897B),
-        tonalElevation = 8.dp
+        tonalElevation = 8.dp,
+        windowInsets = NavigationBarDefaults.windowInsets,  // handles gesture bar automatically
+        modifier = Modifier.height(56.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
     ) {
         items.forEach { item ->
             NavigationBarItem(
                 icon = {
                     Icon(
                         imageVector = item.icon,
-                        contentDescription = item.label
+                        contentDescription = item.label,
+                        modifier = Modifier.size(22.dp)
                     )
                 },
                 label = {
                     Text(
                         text = item.label,
-                        style = MaterialTheme.typography.labelSmall
+                        fontSize = 10.sp
                     )
                 },
                 selected = selectedRoute == item.route,

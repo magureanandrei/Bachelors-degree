@@ -70,7 +70,7 @@ fun TimeScaledBgGraph(
     val minBg = 40f
     val maxBg = 350f
     val rangeBg = maxBg - minBg
-    val topPadding = 40f
+    val topPadding = 0f
     val bottomPadding = 120f
 
     Row(modifier = modifier) {

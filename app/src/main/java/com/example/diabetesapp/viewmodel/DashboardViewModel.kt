@@ -19,6 +19,8 @@ import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
 import com.example.diabetesapp.utils.CgmReading
 import com.example.diabetesapp.utils.HealthConnectHelper
+import com.example.diabetesapp.utils.IobCalculator
+import com.example.diabetesapp.utils.IobResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -68,6 +70,9 @@ class DashboardViewModel(
     private val _recentWorkouts = MutableStateFlow<List<ExerciseSessionRecord>>(emptyList())
     val recentWorkouts: StateFlow<List<ExerciseSessionRecord>> = _recentWorkouts.asStateFlow()
 
+    private val _iobResult = MutableStateFlow<IobResult?>(null)
+    val iobResult: StateFlow<IobResult?> = _iobResult.asStateFlow()
+
     private val _hypoPrediction = MutableStateFlow<HypoPrediction?>(null)
     val hypoPrediction: StateFlow<HypoPrediction?> = _hypoPrediction.asStateFlow()
 
@@ -96,6 +101,7 @@ class DashboardViewModel(
                     xdripTreatments = _xdripTreatmentsCache.value,
                     hcWorkouts = _hcWorkoutLogs.value
                 )
+                recalculateIob()
             }
         }
     }
@@ -112,6 +118,19 @@ class DashboardViewModel(
         _graphEvents.value = combined
     }
 
+    fun recalculateIob() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val logs = allLogs.value
+            val currentSettings = settings.value
+            val latestReading = _latestReading.value  // capture current value
+            val xdripIob = latestReading?.iob
+            val xdripTimestamp = latestReading?.timestamp  // pass timestamp too
+            val result = IobCalculator.calculate(logs, currentSettings, xdripIob, xdripTimestamp)
+            withContext(Dispatchers.Main) {
+                _iobResult.value = result
+            }
+        }
+    }
     private fun calculateHypoPrediction(
         readings: List<CgmReading>,
         hypoLimit: Float
@@ -257,6 +276,7 @@ class DashboardViewModel(
 
                     withContext(Dispatchers.Main) {
                         _latestReading.value = latest
+                        recalculateIob()
                         _cgmReadings.value = history
                         calculateHypoPrediction(history, settings.value.hypoLimit)
                         val localLogs = allLogs.value.filter { it.timestamp >= dayStart }

@@ -35,6 +35,7 @@ import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.CompactLogEntryCard
 import com.example.diabetesapp.ui.components.CurrentBgWidget
 import com.example.diabetesapp.ui.components.DashboardActionButtons
+import com.example.diabetesapp.ui.components.IobWidget
 import com.example.diabetesapp.ui.components.LogDetailsDialog
 import com.example.diabetesapp.ui.components.PostWorkoutVerificationDialog
 import com.example.diabetesapp.ui.components.TimeScaledBgGraph
@@ -67,8 +68,9 @@ fun HomeScreen(
     val todaysLogs by viewModel.graphEvents.collectAsState()
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
     val graphEvents by viewModel.graphEvents.collectAsState()
-
     val hypoPrediction by viewModel.hypoPrediction.collectAsState()
+    val iobResult by viewModel.iobResult.collectAsState()
+
 
 
     var selectedLogForModal by remember { mutableStateOf<BolusLog?>(null) }
@@ -145,13 +147,8 @@ fun HomeScreen(
         // while(isActive) keeps this loop running endlessly in the background
         // as long as the Home Screen is open.
         while (isActive) {
-
-            // Trigger the fetch we built in the ViewModel
             viewModel.fetchDashboardData()
-
-            // Wait for 5 minutes (300,000 milliseconds)
-            // This is a "suspending" delay, meaning it won't freeze your UI
-            kotlinx.coroutines.delay(5 * 60 * 1000L)
+            kotlinx.coroutines.delay(1 * 60 * 1000L)
         }
     }
 
@@ -173,7 +170,7 @@ fun HomeScreen(
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
                 Text("Glucose Monitoring", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
 
                 // 1. Give the widget some breathing room at the top of the card
@@ -188,6 +185,18 @@ fun HomeScreen(
                 } else {
                     Spacer(modifier = Modifier.height(12.dp))
                 }
+                HorizontalDivider(
+                    color = Color(0xFFF0F0F0),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                IobWidget(
+                    iobResult = iobResult,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                HorizontalDivider(
+                    color = Color(0xFFF0F0F0),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
 
                 // 2. The Graph now has its own clean space
                 key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
