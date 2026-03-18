@@ -123,10 +123,24 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                         Text("${log.sportDuration?.toInt()} min ${log.sportType ?: ""}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.DarkGray)
                         Text("Intensity: ${log.sportIntensity ?: ""}", fontSize = 13.sp, color = Color.Gray)
                     }
-                    if (log.status == "PLANNED") {
-                        Text("Pending", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, modifier = Modifier.background(Color(0xFFFFF3E0), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
-                    } else {
-                        Text("Completed", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold, modifier = Modifier.background(Color(0xFFE0F2F1), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
+                    val isAutoActivity = log.notes?.contains("Auto-imported") == true
+                            || log.notes?.startsWith("Auto-detected") == true
+                    when {
+                        log.status == "PLANNED" -> Text(
+                            "Pending", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFFFF3E0), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                        isAutoActivity -> Text(
+                            "Auto", fontSize = 12.sp, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFE3F2FD), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                        else -> Text(
+                            "Completed", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFE0F2F1), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
                     }
                 }
             } else {

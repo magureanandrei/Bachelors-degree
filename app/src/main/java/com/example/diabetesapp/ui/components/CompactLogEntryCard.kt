@@ -84,14 +84,24 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
                     Text("${log.sportDuration?.toInt()}m ${log.sportType}", fontSize = 13.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
-                    if (log.status == "PLANNED") {
-                        Text("Pending", fontSize = 11.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, modifier = Modifier
-                            .background(Color(0xFFFFF3E0), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp))
-                    } else {
-                        Text("Done", fontSize = 11.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold, modifier = Modifier
-                            .background(Color(0xFFE0F2F1), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp))
+                    val isAutoActivity = log.notes?.contains("Auto-imported") == true
+                            || log.notes?.startsWith("Auto-detected") == true
+                    when {
+                        log.status == "PLANNED" -> Text(
+                            "Pending", fontSize = 11.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFFFF3E0), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                        isAutoActivity -> Text(
+                            "Auto", fontSize = 11.sp, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFE3F2FD), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                        else -> Text(
+                            "Done", fontSize = 11.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFE0F2F1), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                 }
             } else {
