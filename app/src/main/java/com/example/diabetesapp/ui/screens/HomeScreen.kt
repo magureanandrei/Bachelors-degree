@@ -68,6 +68,8 @@ fun HomeScreen(
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
     val graphEvents by viewModel.graphEvents.collectAsState()
 
+    val hypoPrediction by viewModel.hypoPrediction.collectAsState()
+
 
     var selectedLogForModal by remember { mutableStateOf<BolusLog?>(null) }
 
@@ -202,7 +204,30 @@ fun HomeScreen(
                             hyperLimit = settings.hyperLimit,
                             isCgmEnabled = isCgmEnabled,
                             settings=settings,
+                            hypoPrediction = hypoPrediction,
                             modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+                hypoPrediction?.let { prediction ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFE53935),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Expected low in ~${prediction.minutesUntilHypo} min",
+                            fontSize = 12.sp,
+                            color = Color(0xFFE53935),
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }

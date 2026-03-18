@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.CgmTrend
+import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
@@ -67,6 +68,9 @@ class DashboardViewModel(
     private val _recentWorkouts = MutableStateFlow<List<ExerciseSessionRecord>>(emptyList())
     val recentWorkouts: StateFlow<List<ExerciseSessionRecord>> = _recentWorkouts.asStateFlow()
 
+    private val _hypoPrediction = MutableStateFlow<HypoPrediction?>(null)
+    val hypoPrediction: StateFlow<HypoPrediction?> = _hypoPrediction.asStateFlow()
+
     private val _hcWorkoutLogs = MutableStateFlow<List<BolusLog>>(emptyList())
 
     private val _dailySteps = MutableStateFlow(0L)
@@ -106,6 +110,76 @@ class DashboardViewModel(
             .sortedBy { it.timestamp }
         Log.d("DashboardVM", "Graph events: ${combined.size} total (${localLogs.size} local + ${xdripTreatments.size} xDrip + ${hcWorkouts.size} HC workouts)")
         _graphEvents.value = combined
+    }
+
+    private fun calculateHypoPrediction(
+        readings: List<CgmReading>,
+        hypoLimit: Float
+    ) {
+        // Need at least 4 readings (20 min of data) for a reliable trend
+        val recent = readings
+            .filter { it.bgValue > 0 }
+            .sortedByDescending { it.timestamp }
+            .take(8) // last 40 minutes
+            .reversed()
+
+        if (recent.size < 4) {
+            _hypoPrediction.value = null
+            return
+        }
+
+        // Linear regression on recent readings
+        val n = recent.size
+        val tBase = recent.first().timestamp
+        val xs = recent.map { (it.timestamp - tBase).toFloat() / 60000f } // minutes
+        val ys = recent.map { it.bgValue.toFloat() }
+
+        val sumX = xs.sum()
+        val sumY = ys.sum()
+        val sumXY = xs.zip(ys).sumOf { (x, y) -> (x * y).toDouble() }.toFloat()
+        val sumX2 = xs.sumOf { (it * it).toDouble() }.toFloat()
+
+        val slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX) // mg/dL per minute
+        val intercept = (sumY - slope * sumX) / n
+
+        // Current BG from most recent reading
+        val latestX = xs.last()
+        val currentBg = slope * latestX + intercept
+
+        // Only predict if trending down
+        if (slope >= -0.1f) {
+            _hypoPrediction.value = null
+            return
+        }
+
+        // Time until hypo: solve hypoLimit = slope * t + intercept
+        val minutesUntilHypo = ((hypoLimit - intercept) / slope).toInt()
+        val now = System.currentTimeMillis()
+        val latestTimestamp = recent.last().timestamp
+        val minutesSinceLatest = ((now - latestTimestamp) / 60000f).toInt()
+        val minutesFromNow = minutesUntilHypo - (latestX + minutesSinceLatest).toInt()
+
+        // Only show if hypo is within 60 minutes and we're not already hypo
+        if (minutesFromNow <= 0 || minutesFromNow > 60 || currentBg <= hypoLimit) {
+            _hypoPrediction.value = null
+            return
+        }
+
+        // Build projection points from now to hypo crossing (for graph)
+        val projectionPoints = mutableListOf<Pair<Long, Float>>()
+        for (m in 0..minutesFromNow + 5) {
+            val t = now + m * 60 * 1000L
+            val minutesFromBase = (t - tBase).toFloat() / 60000f
+            val projectedBg = (slope * minutesFromBase + intercept).coerceAtLeast(hypoLimit - 10f)
+            projectionPoints.add(Pair(t, projectedBg))
+            if (projectedBg <= hypoLimit) break
+        }
+
+        _hypoPrediction.value = HypoPrediction(
+            minutesUntilHypo = minutesFromNow,
+            predictedBgAtHypo = hypoLimit,
+            projectionPoints = projectionPoints
+        )
     }
 
     fun fetchHistoryData() {
@@ -184,6 +258,7 @@ class DashboardViewModel(
                     withContext(Dispatchers.Main) {
                         _latestReading.value = latest
                         _cgmReadings.value = history
+                        calculateHypoPrediction(history, settings.value.hypoLimit)
                         val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
                         rebuildGraphEvents(
                             localLogs = localLogs,

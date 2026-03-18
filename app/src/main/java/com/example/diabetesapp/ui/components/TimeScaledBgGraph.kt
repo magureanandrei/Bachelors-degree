@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
+import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.utils.CgmReading
 
 @Composable
@@ -47,6 +48,7 @@ fun TimeScaledBgGraph(
     hyperLimit: Float = 180f,
     isCgmEnabled: Boolean,
     settings: BolusSettings,
+    hypoPrediction: HypoPrediction? = null,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -225,6 +227,29 @@ fun TimeScaledBgGraph(
                         color = Color(0xFFE53935).copy(alpha = 0.85f),
                         style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
+                }
+
+                // 3.6 HYPO PREDICTION LINE
+                hypoPrediction?.let { prediction ->
+                    if (prediction.projectionPoints.size >= 2) {
+                        val predPath = Path()
+                        var isFirst = true
+                        prediction.projectionPoints.forEach { (timestamp, bg) ->
+                            val x = timeToX(timestamp)
+                            val y = bgToY(bg.coerceIn(minBg, maxBg))
+                            if (isFirst) { predPath.moveTo(x, y); isFirst = false }
+                            else predPath.lineTo(x, y)
+                        }
+                        drawPath(
+                            path = predPath,
+                            color = Color(0xFFE53935).copy(alpha = 0.6f),
+                            style = Stroke(
+                                width = 2.5f.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 6f), 0f)
+                            )
+                        )
+                    }
                 }
 
                 // 4. SPORT DURATIONS
