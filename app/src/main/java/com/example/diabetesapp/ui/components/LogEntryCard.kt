@@ -71,8 +71,8 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
     ) {
         Column(modifier = Modifier.padding(
             horizontal = 12.dp,
-            vertical = if (isWalk) 6.dp else 12.dp
-        )) {
+            vertical = if (isWalk) 4.dp else 8.dp
+        )){
 
             // Header: Time and Event Icon
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -133,7 +133,7 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // --- THE DYNAMIC BODY ---
             if (log.eventType == "SPORT") {
@@ -173,18 +173,21 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
             } else {
                 // STANDARD DIABETES LAYOUT (BG, Carbs, Insulin)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         if (log.bloodGlucose > 0) {
                             val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
-                            Text("BG: ${log.bloodGlucose} mg/dL", fontWeight = FontWeight.Bold, color = color)
+                            Text("BG: ${log.bloodGlucose.toInt()}", fontWeight = FontWeight.Bold, color = color, fontSize = 13.sp)
                         }
-                        if (log.carbs > 0) Text("Carbs: ${log.carbs}g", color = Color.Gray, fontSize = 13.sp)
+                        if (log.carbs > 0) Text("${log.carbs.toInt()}g carbs", color = Color.Gray, fontSize = 12.sp)
                     }
 
                     Column(horizontalAlignment = Alignment.End) {
                         if (log.administeredDose > 0) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                                Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
                                 Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(16.dp))
                             }
                             if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
