@@ -3,6 +3,7 @@ package com.example.diabetesapp.utils
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -67,6 +68,26 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
         } catch (e: Exception) {
             Log.e("HC_Steps", "Failed to read steps: ${e.message}")
             0L
+        }
+    }
+
+    suspend fun getAverageHeartRateForSession(
+        startTime: Instant,
+        endTime: Instant
+    ): Double? {
+        return try {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+                )
+            )
+            val allSamples = response.records.flatMap { it.samples }
+            if (allSamples.isEmpty()) null
+            else allSamples.map { it.beatsPerMinute }.average()
+        } catch (e: Exception) {
+            Log.e("HC_HR", "Failed to read heart rate: ${e.message}")
+            null
         }
     }
 

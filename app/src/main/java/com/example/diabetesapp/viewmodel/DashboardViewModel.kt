@@ -227,20 +227,35 @@ class DashboardViewModel(
 
             val dayStart = get24hStartTimestamp()
 
-            val confirmedWorkoutLogs = records.mapNotNull { record ->
+            // All ExerciseSessionRecords come from Strava — drop Walking types
+            val stravaActivities = records.mapNotNull { record ->
                 val startMs = record.startTime.toEpochMilli()
                 if (startMs < dayStart) return@mapNotNull null
+
                 val durationMinutes = ChronoUnit.MINUTES.between(
                     record.startTime, record.endTime
                 ).toFloat()
+
                 val sportType = when (record.exerciseType) {
-                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "Walking"
+                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> return@mapNotNull null
                     ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "Running"
                     ExerciseSessionRecord.EXERCISE_TYPE_BIKING -> "Cycling"
                     ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,
                     ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "Swimming"
                     else -> "Workout"
                 }
+
+                // Try to get avg heart rate to infer intensity
+                val avgHr = helper.getAverageHeartRateForSession(record.startTime, record.endTime)
+                val intensity = when {
+                    avgHr == null -> "Medium"
+                    avgHr >= 160  -> "High"
+                    avgHr >= 130  -> "Medium"
+                    else          -> "Low"
+                }
+
+                Log.d("HC_Workouts", "$sportType: avgHR=${avgHr?.toInt()}, intensity=$intensity")
+
                 BolusLog(
                     id = 0,
                     timestamp = startMs,
@@ -253,23 +268,32 @@ class DashboardViewModel(
                     administeredDose = 0.0,
                     isSportModeActive = true,
                     sportType = sportType,
-                    sportIntensity = "Medium",
+                    sportIntensity = intensity,
                     sportDuration = durationMinutes,
-                    notes = "Auto-imported from Health Connect",
+                    notes = "Auto-imported from Strava",
                     clinicalSuggestion = null
                 )
             }
 
             val todayWalks = detectedWalks.filter { it.timestamp >= dayStart }
 
-            val bucketMs = 10 * 60 * 1000L
-            val allWorkouts = (confirmedWorkoutLogs + todayWalks)
-                .groupBy { it.timestamp / bucketMs }
-                .map { (_, entries) ->
-                    entries.firstOrNull { it.notes == "Auto-imported from Health Connect" }
-                        ?: entries.first()
+            // Suppress step-detected walks that are >50% overlapped by a Strava activity
+            val filteredWalks = todayWalks.filter { walk ->
+                val walkStart = walk.timestamp
+                val walkEnd = walkStart + (walk.sportDuration!! * 60 * 1000L).toLong()
+                val walkDuration = walkEnd - walkStart
+
+                stravaActivities.none { activity ->
+                    val actStart = activity.timestamp
+                    val actEnd = actStart + (activity.sportDuration!! * 60 * 1000L).toLong()
+                    val overlapStart = maxOf(walkStart, actStart)
+                    val overlapEnd = minOf(walkEnd, actEnd)
+                    val overlapMs = (overlapEnd - overlapStart).coerceAtLeast(0L)
+                    overlapMs > walkDuration * 0.5
                 }
-                .sortedBy { it.timestamp }
+            }
+
+            val allWorkouts = (stravaActivities + filteredWalks).sortedBy { it.timestamp }
 
             withContext(Dispatchers.Main) {
                 _recentWorkouts.value = records

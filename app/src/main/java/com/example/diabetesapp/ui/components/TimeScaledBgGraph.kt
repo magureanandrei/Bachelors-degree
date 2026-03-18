@@ -232,25 +232,39 @@ fun TimeScaledBgGraph(
                     val startX = timeToX(sportLog.timestamp)
                     val endX = timeToX(sportLog.timestamp + (sportLog.sportDuration!!.toLong() * 60 * 1000L))
                     val bandWidth = (endX - startX).coerceAtLeast(4f)
-                    val isPlanned = sportLog.status == "PLANNED"
-                    val sportColor = Color(0xFF26A69A)
-                    val fillColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f) else sportColor.copy(alpha = 0.13f)
-                    val borderColor = if (isPlanned) Color(0xFFFF9800) else sportColor
-                    val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+                    val isPlanned  = sportLog.status == "PLANNED"
+                    val isStepWalk = sportLog.notes.startsWith("Auto-detected")
 
-                    drawRect(color = fillColor, topLeft = Offset(startX, topPadding), size = Size(bandWidth, graphHeight))
-                    drawLine(borderColor, Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
-                    drawLine(borderColor, Offset(startX + bandWidth, topPadding), Offset(startX + bandWidth, topPadding + graphHeight), 3f, pathEffect = pathEffect)
+                    val sportColor = when {
+                        isPlanned  -> Color(0xFFFF9800)
+                        isStepWalk -> Color(0xFF78909C)  // muted blue-grey
+                        else       -> Color(0xFF26A69A)  // teal — Strava, manual, all the same
+                    }
+
+                    val fillAlpha   = if (isStepWalk) 0.08f else 0.13f
+                    val borderAlpha = if (isStepWalk) 0.55f else 1.0f
+                    val strokeWidth = if (isStepWalk) 2f    else 3f
+                    val pathEffect  = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+
+                    drawRect(
+                        color = sportColor.copy(alpha = fillAlpha),
+                        topLeft = Offset(startX, topPadding),
+                        size = Size(bandWidth, graphHeight)
+                    )
+                    drawLine(sportColor.copy(alpha = borderAlpha), Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), strokeWidth, pathEffect = pathEffect)
+                    drawLine(sportColor.copy(alpha = borderAlpha), Offset(startX + bandWidth, topPadding), Offset(startX + bandWidth, topPadding + graphHeight), strokeWidth, pathEffect = pathEffect)
 
                     val label = "${sportLog.sportType ?: "Workout"} · ${sportLog.sportDuration.toInt()}m"
                     val labelResult = textMeasurer.measure(
                         label,
-                        style = TextStyle(color = borderColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(
+                            color = sportColor.copy(alpha = if (isStepWalk) 0.65f else 1.0f),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     )
                     if (bandWidth > labelResult.size.height + 4f) {
-                        val labelX = startX + 4f
-                        val labelY = topPadding + graphHeight / 2f - labelResult.size.width / 2f
-                        translate(left = labelX, top = labelY) {
+                        translate(left = startX + 4f, top = topPadding + graphHeight / 2f - labelResult.size.width / 2f) {
                             rotate(90f) { drawText(labelResult) }
                         }
                     }
