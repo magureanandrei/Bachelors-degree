@@ -146,7 +146,7 @@ class DashboardViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val isCgmEnabled = settings.value.isCgmEnabled
-                val isAidPump = settings.value.isAidPump  // was isPumpUser
+                val isAidPump = settings.value.isAidPump
                 val dayStart = get24hStartTimestamp()
 
                 if (isCgmEnabled) {
@@ -157,7 +157,7 @@ class DashboardViewModel(
                     val todayXDrip = if (isAidPump) {
                         val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
                         xdripTreatments
-                            .filter { it.timestamp >= dayStart }  // removed effectiveDataStart filter
+                            .filter { it.timestamp >= dayStart }
                             .map { treatment ->
                                 treatment.copy(
                                     bloodGlucose = findClosestBg(treatment.timestamp, history)
@@ -169,9 +169,21 @@ class DashboardViewModel(
 
                     _xdripTreatmentsCache.value = todayXDrip
 
+                    // Persist xDrip treatments that have a matched BG and aren't already in DB
+                    val existingLogs = allLogs.value
+                    todayXDrip.forEach { treatment ->
+                        val alreadySaved = existingLogs.any { existing ->
+                            Math.abs(existing.timestamp - treatment.timestamp) <= 2 * 60 * 1000L
+                                    && existing.notes == "Auto-entry via CareLink"
+                        }
+                        if (!alreadySaved && treatment.bloodGlucose > 0) {
+                            repository.insert(treatment)
+                        }
+                    }
+
                     withContext(Dispatchers.Main) {
                         _latestReading.value = latest
-                        _cgmReadings.value = history  // removed glucoseSourceChangedAt filter
+                        _cgmReadings.value = history
                         val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
                         rebuildGraphEvents(
                             localLogs = localLogs,
