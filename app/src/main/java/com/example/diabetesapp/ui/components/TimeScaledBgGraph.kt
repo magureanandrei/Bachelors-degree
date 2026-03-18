@@ -144,23 +144,56 @@ fun TimeScaledBgGraph(
                 // 3.5 CONTINUOUS CGM LINE
                 if (cgmReadings.isNotEmpty()) {
                     val cgmPath = Path()
+                    val lowBridgePath = Path()
                     var isFirstPoint = true
+                    var lastValidX = 0f
+                    var lastValidY = 0f
+                    var hadLowGap = false
                     var previousTimestamp = 0L
-                    val maxGapMs = 16 * 60 * 1000L
+                    val maxGapMs = 30 * 60 * 1000L  // 30 min = true sensor dropout, no bridge
+                    val windowEnd = dayStartTimestamp + windowMs.toLong()
 
-                    cgmReadings.filter { it.bgValue > 0 }.forEach { reading ->
+                    cgmReadings.sortedBy { it.timestamp }.forEach { reading ->
+                        val inWindow = reading.timestamp >= dayStartTimestamp && reading.timestamp <= windowEnd
+                        val timeSinceLast = if (previousTimestamp > 0L) reading.timestamp - previousTimestamp else 0L
+                        val isTrueGap = previousTimestamp > 0L && timeSinceLast > maxGapMs
+
+                        if (reading.bgValue <= 0) {
+                            // xDrip sent a LOW reading — flag it if it's not a true gap
+                            if (inWindow && !isTrueGap) hadLowGap = true
+                            previousTimestamp = reading.timestamp
+                            return@forEach
+                        }
+
                         val x = timeToX(reading.timestamp)
                         val y = bgToY(reading.bgValue.toFloat().coerceIn(minBg, maxBg))
-                        val isGap = previousTimestamp > 0L && (reading.timestamp - previousTimestamp > maxGapMs)
 
-                        if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + windowMs.toLong()) {
-                            if (isFirstPoint || isGap) {
-                                cgmPath.moveTo(x, y)
-                                isFirstPoint = false
-                            } else {
-                                cgmPath.lineTo(x, y)
+                        if (inWindow) {
+                            when {
+                                isFirstPoint -> {
+                                    cgmPath.moveTo(x, y)
+                                    isFirstPoint = false
+                                }
+                                isTrueGap -> {
+                                    // >30 min gap — just break the line, no bridge
+                                    cgmPath.moveTo(x, y)
+                                    hadLowGap = false
+                                }
+                                hadLowGap -> {
+                                    // Came back up from LOW — draw red bridge
+                                    lowBridgePath.moveTo(lastValidX, lastValidY)
+                                    lowBridgePath.lineTo(x, y)
+                                    cgmPath.moveTo(x, y)
+                                    hadLowGap = false
+                                }
+                                else -> {
+                                    cgmPath.lineTo(x, y)
+                                }
                             }
+                            lastValidX = x
+                            lastValidY = y
                         }
+
                         previousTimestamp = reading.timestamp
                     }
 
@@ -183,6 +216,13 @@ fun TimeScaledBgGraph(
                     drawPath(
                         path = cgmPath,
                         brush = cgmBrush,
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+
+                    // Solid red bridge for LOW periods (under 50)
+                    drawPath(
+                        path = lowBridgePath,
+                        color = Color(0xFFE53935).copy(alpha = 0.85f),
                         style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
                 }
