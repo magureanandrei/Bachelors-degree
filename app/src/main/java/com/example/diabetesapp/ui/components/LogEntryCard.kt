@@ -2,6 +2,7 @@ package com.example.diabetesapp.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,14 +53,26 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
     var isExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
+    val isAutoEntry = log.notes?.contains("Auto-imported") == true
+            || log.notes?.startsWith("Auto-detected") == true
+    val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
+
     Card(
         onClick = { isExpanded = !isExpanded },
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth().then(
+            if (isWalk) Modifier.border(1.dp, Color(0xFFCFD8DC), RoundedCornerShape(10.dp))
+            else Modifier
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isWalk) Color(0xFFF5F7F8) else Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isWalk) 0.dp else 1.dp),
         shape = RoundedCornerShape(10.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(
+            horizontal = 12.dp,
+            vertical = if (isWalk) 6.dp else 12.dp
+        )) {
 
             // Header: Time and Event Icon
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -104,10 +117,17 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                             )
                         }
                         "SPORT" -> {
-                            val sportColor = if (log.status == "PLANNED") Color(0xFFFF9800) else Color(0xFF00695C)
+                            val sportColor = when {
+                                log.status == "PLANNED" -> Color(0xFFFF9800)
+                                isWalk -> Color(0xFF90A4AE)
+                                else -> Color(0xFF00695C)
+                            }
                             Icon(Icons.Default.DirectionsRun, null, modifier = Modifier.size(14.dp), tint = sportColor)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Sport Event", fontSize = 12.sp, color = sportColor, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (isWalk) "Walk" else "Sport Event",
+                                fontSize = 12.sp, color = sportColor, fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -120,8 +140,15 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                 // SPORT-ONLY LAYOUT
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
-                        Text("${log.sportDuration?.toInt()} min ${log.sportType ?: ""}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.DarkGray)
-                        Text("Intensity: ${log.sportIntensity ?: ""}", fontSize = 13.sp, color = Color.Gray)
+                        Text(
+                            "${log.sportDuration?.toInt()} min ${log.sportType ?: ""}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = if (isWalk) 13.sp else 15.sp,
+                            color = if (isWalk) Color(0xFF78909C) else Color.DarkGray
+                        )
+                        if (!isWalk) {
+                            Text("Intensity: ${log.sportIntensity ?: ""}", fontSize = 13.sp, color = Color.Gray)
+                        }
                     }
                     val isAutoActivity = log.notes?.contains("Auto-imported") == true
                             || log.notes?.startsWith("Auto-detected") == true

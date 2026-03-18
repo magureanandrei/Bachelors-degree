@@ -1,6 +1,7 @@
 package com.example.diabetesapp.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,14 +40,22 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
     val isAutoEntry = log.notes == "Auto-entry via CareLink"
             || log.notes?.startsWith("Auto-imported") == true
             || log.notes?.startsWith("Auto-detected") == true
+    val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
 
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isAutoEntry) Color(0xFFF5FFFE) else Color.White
+        modifier = Modifier.fillMaxWidth().then(
+            if (isWalk) Modifier.border(1.dp, Color(0xFFCFD8DC), RoundedCornerShape(8.dp))
+            else Modifier
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                isWalk -> Color(0xFFECEFF1)        // more visible grey
+                isAutoEntry -> Color(0xFFF5FFFE)
+                else -> Color.White
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isWalk) 0.dp else 1.dp),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -61,7 +70,13 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
                 Text(timeString, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                 Spacer(modifier = Modifier.width(8.dp))
                 when {
-                    log.eventType == "SPORT" -> Icon(Icons.Default.DirectionsRun, null, tint = if(log.status == "PLANNED") Color(0xFFFF9800) else Color(0xFF00695C), modifier = Modifier.size(16.dp))
+                    log.eventType == "SPORT" -> Icon(
+                        Icons.Default.DirectionsRun, null,
+                        tint = if (log.status == "PLANNED") Color(0xFFFF9800)
+                        else if (isWalk) Color(0xFF90A4AE)  // grey for auto walks
+                        else Color(0xFF00695C),
+                        modifier = Modifier.size(16.dp)
+                    )
                     log.eventType == "SMART_BOLUS" -> Icon(Icons.Default.AutoFixHigh, null, tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
                     log.carbs > 0 && log.administeredDose >= 0.0 -> Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
                     log.administeredDose > 0 -> Icon(Icons.Default.Vaccines, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
@@ -81,7 +96,13 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
 
             if (log.eventType == "SPORT") {
                 Row(modifier = Modifier.weight(1.5f)) {
-                    Text("${log.sportDuration?.toInt()}m ${log.sportType}", fontSize = 13.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium, maxLines = 1)
+                    Text(
+                        "${log.sportDuration?.toInt()}m ${log.sportType}",
+                        fontSize = 13.sp,
+                        color = if (isWalk) Color(0xFF90A4AE) else Color.DarkGray,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
                 }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
                     val isAutoActivity = log.notes?.contains("Auto-imported") == true

@@ -303,19 +303,54 @@ class DashboardViewModel(
                 }
             }
 
-            val allWorkouts = (stravaActivities + filteredWalks).sortedBy { it.timestamp }
+            // Merge walks that are within 15 minutes of each other into one session
+            val mergedWalks = mutableListOf<BolusLog>()
+            val sortedWalks = filteredWalks.sortedBy { it.timestamp }
+
+            sortedWalks.forEach { walk ->
+                val last = mergedWalks.lastOrNull()
+                if (last != null) {
+                    val lastEnd = last.timestamp + (last.sportDuration!! * 60 * 1000L).toLong()
+                    val gapMs = walk.timestamp - lastEnd
+                    if (gapMs <= 15 * 60 * 1000L && last.sportType == walk.sportType) {
+                        // Merge into the last walk — extend its duration
+                        val newDuration = ((walk.timestamp + (walk.sportDuration!! * 60 * 1000L).toLong()
+                                - last.timestamp) / 60000f)
+                        mergedWalks[mergedWalks.lastIndex] = last.copy(sportDuration = newDuration)
+                    } else {
+                        mergedWalks.add(walk)
+                    }
+                } else {
+                    mergedWalks.add(walk)
+                }
+            }
+
+            val allWorkouts = (stravaActivities + mergedWalks).sortedBy { it.timestamp }
 
             // Persist any new activities that aren't already in the DB
             val existingLogs = allLogs.value
             allWorkouts.forEach { workout ->
-                val alreadySaved = existingLogs.any { existing ->
-                    existing.isSportModeActive &&
-                            Math.abs(existing.timestamp - workout.timestamp) <= 5 * 60 * 1000L &&
-                            existing.sportType == workout.sportType
-                }
-                if (!alreadySaved) {
+                if (workout.sportType == "Walking" && workout.notes.startsWith("Auto-detected")) {
+                    // Remove any existing walk entries that fall within this merged walk's time window
+                    val workoutEnd = workout.timestamp + (workout.sportDuration!! * 60 * 1000L).toLong()
+                    existingLogs.filter { existing ->
+                        existing.isSportModeActive &&
+                                existing.sportType == "Walking" &&
+                                existing.timestamp >= workout.timestamp - 60 * 1000L &&
+                                existing.timestamp <= workoutEnd
+                    }.forEach { duplicate ->
+                        repository.delete(duplicate)
+                    }
                     repository.insert(workout)
-                    Log.d("HC_Persist", "Saved new activity: ${workout.sportType} at ${workout.timestamp}")
+                } else {
+                    val alreadySaved = existingLogs.any { existing ->
+                        existing.isSportModeActive &&
+                                Math.abs(existing.timestamp - workout.timestamp) <= 2 * 60 * 1000L &&
+                                existing.sportType == workout.sportType
+                    }
+                    if (!alreadySaved) {
+                        repository.insert(workout)
+                    }
                 }
             }
 
