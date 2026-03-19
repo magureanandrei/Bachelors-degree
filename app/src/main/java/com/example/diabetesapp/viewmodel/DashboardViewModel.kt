@@ -135,11 +135,10 @@ class DashboardViewModel(
         readings: List<CgmReading>,
         hypoLimit: Float
     ) {
-        // Need at least 4 readings (20 min of data) for a reliable trend
         val recent = readings
             .filter { it.bgValue > 0 }
             .sortedByDescending { it.timestamp }
-            .take(8) // last 40 minutes
+            .take(8)
             .reversed()
 
         if (recent.size < 4) {
@@ -147,51 +146,98 @@ class DashboardViewModel(
             return
         }
 
-        // Linear regression on recent readings
-        val n = recent.size
         val tBase = recent.first().timestamp
-        val xs = recent.map { (it.timestamp - tBase).toFloat() / 60000f } // minutes
+        val xs = recent.map { (it.timestamp - tBase).toFloat() / 60000f }
         val ys = recent.map { it.bgValue.toFloat() }
 
-        val sumX = xs.sum()
-        val sumY = ys.sum()
-        val sumXY = xs.zip(ys).sumOf { (x, y) -> (x * y).toDouble() }.toFloat()
-        val sumX2 = xs.sumOf { (it * it).toDouble() }.toFloat()
+        // Recency weights — most recent reading gets weight 1.0, oldest gets ~0.2
+        val weights = xs.indices.map { i ->
+            0.2f + 0.8f * (i.toFloat() / (xs.size - 1))
+        }
 
-        val slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX) // mg/dL per minute
-        val intercept = (sumY - slope * sumX) / n
+        // Weighted quadratic regression — solve for a, b, c in y = ax² + bx + c
+        // Build weighted sums
+        var sw   = 0.0; var swx  = 0.0; var swx2 = 0.0
+        var swx3 = 0.0; var swx4 = 0.0
+        var swy  = 0.0; var swxy = 0.0; var swx2y = 0.0
 
-        // Current BG from most recent reading
-        val latestX = xs.last()
-        val currentBg = slope * latestX + intercept
+        for (i in xs.indices) {
+            val w = weights[i].toDouble()
+            val x = xs[i].toDouble()
+            val y = ys[i].toDouble()
+            val x2 = x * x
+            sw    += w
+            swx   += w * x
+            swx2  += w * x2
+            swx3  += w * x2 * x
+            swx4  += w * x2 * x2
+            swy   += w * y
+            swxy  += w * x * y
+            swx2y += w * x2 * y
+        }
 
-        // Only predict if trending down
-        if (slope >= -0.1f) {
+        // Solve 3x3 system using Gaussian elimination
+        // [swx4 swx3 swx2] [a]   [swx2y]
+        // [swx3 swx2 swx ] [b] = [swxy ]
+        // [swx2 swx  sw  ] [c]   [swy  ]
+        val mat = Array(3) { DoubleArray(4) }
+        mat[0][0] = swx4; mat[0][1] = swx3; mat[0][2] = swx2; mat[0][3] = swx2y
+        mat[1][0] = swx3; mat[1][1] = swx2; mat[1][2] = swx;  mat[1][3] = swxy
+        mat[2][0] = swx2; mat[2][1] = swx;  mat[2][2] = sw;   mat[2][3] = swy
+
+        // Forward elimination
+        for (col in 0..1) {
+            for (row in col + 1..2) {
+                val factor = mat[row][col] / mat[col][col]
+                for (j in col..3) mat[row][j] -= factor * mat[col][j]
+            }
+        }
+
+        // Back substitution
+        val c = mat[2][3] / mat[2][2]
+        val b = (mat[1][3] - mat[1][2] * c) / mat[1][1]
+        val a = (mat[0][3] - mat[0][2] * c - mat[0][1] * b) / mat[0][0]
+
+        // Current BG estimate from curve
+        val latestX = xs.last().toDouble()
+        val currentBg = a * latestX * latestX + b * latestX + c
+
+        // Only predict if currently trending down
+        val slopeAtLatest = 2 * a * latestX + b  // derivative of quadratic at latest point
+        if (slopeAtLatest >= -0.1) {
             _hypoPrediction.value = null
             return
         }
 
-        // Time until hypo: solve hypoLimit = slope * t + intercept
-        val minutesUntilHypo = ((hypoLimit - intercept) / slope).toInt()
+        // Project forward minute by minute
         val now = System.currentTimeMillis()
         val latestTimestamp = recent.last().timestamp
-        val minutesSinceLatest = ((now - latestTimestamp) / 60000f).toInt()
-        val minutesFromNow = minutesUntilHypo - (latestX + minutesSinceLatest).toInt()
+        val projectionPoints = mutableListOf<Pair<Long, Float>>()
+        var minutesFromNow = -1
 
-        // Only show if hypo is within 60 minutes and we're not already hypo
-        if (minutesFromNow <= 0 || minutesFromNow > 60 || currentBg <= hypoLimit) {
-            _hypoPrediction.value = null
-            return
+        // Start from last real reading
+        projectionPoints.add(Pair(latestTimestamp, recent.last().bgValue.toFloat()))
+
+        for (m in 1..90) {
+            val t = latestTimestamp + m * 60 * 1000L
+            val minutesFromBase = (t - tBase).toFloat() / 60000.0
+            val projectedBg = (a * minutesFromBase * minutesFromBase + b * minutesFromBase + c).toFloat()
+
+            projectionPoints.add(Pair(t, projectedBg))
+
+            // Find when it crosses hypo limit
+            if (projectedBg <= hypoLimit && minutesFromNow == -1) {
+                val msFromNow = t - now
+                minutesFromNow = (msFromNow / 60000).toInt()
+            }
+
+            // Stop well below hypo line so it visually crosses it
+            if (projectedBg <= hypoLimit - 15f) break
         }
 
-        // Build projection points from now to hypo crossing (for graph)
-        val projectionPoints = mutableListOf<Pair<Long, Float>>()
-        for (m in 0..minutesFromNow + 5) {
-            val t = now + m * 60 * 1000L
-            val minutesFromBase = (t - tBase).toFloat() / 60000f
-            val projectedBg = (slope * minutesFromBase + intercept).coerceAtLeast(hypoLimit - 10f)
-            projectionPoints.add(Pair(t, projectedBg))
-            if (projectedBg <= hypoLimit) break
+        if (minutesFromNow == -1 || minutesFromNow > 60 || currentBg <= hypoLimit) {
+            _hypoPrediction.value = null
+            return
         }
 
         _hypoPrediction.value = HypoPrediction(
