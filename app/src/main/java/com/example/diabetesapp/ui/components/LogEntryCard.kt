@@ -2,6 +2,7 @@ package com.example.diabetesapp.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,21 +46,45 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
+fun LogEntryCard(
+    log: BolusLog,
+    hypoLimit: Float = 70f,
+    hyperLimit: Float = 180f,
+    onDelete: () -> Unit
+){
     val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = timeFormatter.format(Date(log.timestamp))
 
     var isExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
+    val isAutoEntry = log.notes?.contains("Auto-imported") == true
+            || log.notes?.startsWith("Auto-detected") == true
+            || log.notes == "Auto-entry via CareLink"
+    val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
+
     Card(
         onClick = { isExpanded = !isExpanded },
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth().then(
+            if (isWalk) Modifier.border(1.dp, Color(0xFFCFD8DC), RoundedCornerShape(10.dp))
+            else Modifier
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                isWalk -> Color(0xFFF5F7F8)
+                log.eventType == "SPORT" && log.status?.uppercase() == "PLANNED" -> Color(0xFFFFF3E0) // Optional: Light orange background for pending
+                log.eventType == "SPORT" && !isWalk -> Color(0xFF4DB6AC) // <-- YOUR DARK TEAL BACKGROUND HERE
+                isAutoEntry -> Color(0xFFE0F2F1)
+                else -> Color.White
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isWalk) 0.dp else 1.dp),
         shape = RoundedCornerShape(10.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(
+            horizontal = 12.dp,
+            vertical = if (isWalk) 4.dp else 8.dp
+        )){
 
             // Header: Time and Event Icon
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -104,51 +129,106 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                             )
                         }
                         "SPORT" -> {
-                            val sportColor = if (log.status == "PLANNED") Color(0xFFFF9800) else Color(0xFF00695C)
+                            val sportColor = when {
+                                log.status?.uppercase() == "PLANNED" -> Color(0xFFFF9800) // Added uppercase() just in case!
+                                isWalk -> Color(0xFF90A4AE)
+                                else -> Color(0xFF00695C) // <-- Changed to match compact card
+                            }
                             Icon(Icons.Default.DirectionsRun, null, modifier = Modifier.size(14.dp), tint = sportColor)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Sport Event", fontSize = 12.sp, color = sportColor, fontWeight = FontWeight.Bold)
+                            Text(if (isWalk) "Walk" else "Sport Event", fontSize = 12.sp, color = sportColor, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // --- THE DYNAMIC BODY ---
             if (log.eventType == "SPORT") {
-                // SPORT-ONLY LAYOUT
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text("${log.sportDuration?.toInt()} min ${log.sportType ?: ""}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.DarkGray)
-                        Text("Intensity: ${log.sportIntensity ?: ""}", fontSize = 13.sp, color = Color.Gray)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            "${log.sportDuration?.toInt()} min ${log.sportType ?: ""}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (isWalk) Color(0xFF78909C) else Color.DarkGray
+                        )
+                        if (!isWalk && !log.sportIntensity.isNullOrBlank()) {
+                            Text("· ${log.sportIntensity}", fontSize = 12.sp, color = Color.DarkGray)
+                        }
                     }
-                    if (log.status == "PLANNED") {
-                        Text("Pending", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, modifier = Modifier.background(Color(0xFFFFF3E0), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
-                    } else {
-                        Text("Completed", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold, modifier = Modifier.background(Color(0xFFE0F2F1), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
+                    val isAutoActivity = log.notes?.contains("Auto-imported") == true
+                            || log.notes?.startsWith("Auto-detected") == true
+                    when {
+                        log.status == "PLANNED" -> Text(
+                            "Pending", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFFFF3E0), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                        isAutoActivity -> Text(
+                            "Auto", fontSize = 12.sp, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFE3F2FD), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                        else -> Text(
+                            "Completed", fontSize = 12.sp, color = Color(0xFF00695C), fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(Color(0xFFE0F2F1), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
                     }
                 }
             } else {
                 // STANDARD DIABETES LAYOUT (BG, Carbs, Insulin)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         if (log.bloodGlucose > 0) {
-                            val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
-                            Text("BG: ${log.bloodGlucose} mg/dL", fontWeight = FontWeight.Bold, color = color)
+                            val color = when {
+                                log.bloodGlucose < hypoLimit -> Color(0xFFE53935)
+                                log.bloodGlucose > hyperLimit -> Color(0xFFFF8F00)
+                                else -> Color(0xFF00897B)
+                            }
+                            Text("BG: ${log.bloodGlucose.toInt()}", fontWeight = FontWeight.Bold, color = color, fontSize = 13.sp)
                         }
-                        if (log.carbs > 0) Text("Carbs: ${log.carbs}g", color = Color.Gray, fontSize = 13.sp)
+                        if (log.carbs > 0) Text("${log.carbs.toInt()}g carbs", color = Color.Gray, fontSize = 12.sp)
                     }
 
-                    Column(horizontalAlignment = Alignment.End) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         if (log.administeredDose > 0) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                                Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(16.dp))
-                            }
                             if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
-                                Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${String.format(Locale.US, "%.1f", log.suggestedDose)}U ",
+                                    color = Color(0xFF81C784),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
+                            Text(
+                                "${String.format(Locale.US, "%.1f", log.administeredDose)} U",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
+                            )
+                            Icon(
+                                Icons.Default.Vaccines,
+                                contentDescription = null,
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.padding(start = 4.dp).size(14.dp)
+                            )
                         }
                     }
                 }
@@ -161,7 +241,7 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     if (log.notes.isNotBlank()) {
-                        Text("Notes:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text("Notes:", fontSize = 12.sp, color = Color.DarkGray, fontWeight = FontWeight.Bold)
                         Text(log.notes, fontSize = 13.sp, color = Color.DarkGray)
                         Spacer(modifier = Modifier.height(8.dp))
                     }

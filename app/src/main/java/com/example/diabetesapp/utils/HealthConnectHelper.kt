@@ -3,6 +3,7 @@ package com.example.diabetesapp.utils
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -70,6 +71,26 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
         }
     }
 
+    suspend fun getAverageHeartRateForSession(
+        startTime: Instant,
+        endTime: Instant
+    ): Double? {
+        return try {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+                )
+            )
+            val allSamples = response.records.flatMap { it.samples }
+            if (allSamples.isEmpty()) null
+            else allSamples.map { it.beatsPerMinute }.average()
+        } catch (e: Exception) {
+            Log.e("HC_HR", "Failed to read heart rate: ${e.message}")
+            null
+        }
+    }
+
     suspend fun detectWalkingFromSteps(stepRecords: List<StepsRecord>): List<BolusLog> {
         return try {
             Log.d("HC_Steps", "Raw step buckets: ${stepRecords.size}")
@@ -101,15 +122,15 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
                     if (sessionStart == null || gapFromLast > maxGapMinutes) {
                         // Save previous session if long enough
                         if (sessionStart != null && lastEnd != null) {
-                            val sessionDuration = ChronoUnit.MINUTES.between(
-                                sessionStart, lastEnd
-                            )
-                            if (sessionDuration >= minSessionMinutes) {
-                                walkingSessions.add(
-                                    buildWalkLog(sessionStart!!, lastEnd!!, sessionSteps)
-                                )
+                            val sessionDurationMins = ChronoUnit.MINUTES.between(sessionStart, lastEnd).toDouble()
+                            val avgStepsPerMin = if (sessionDurationMins > 0) sessionSteps / sessionDurationMins else 0.0
+
+                            if (sessionDurationMins >= minSessionMinutes
+                                && sessionSteps >= 400L
+                                && avgStepsPerMin >= 40.0) {
+                                walkingSessions.add(buildWalkLog(sessionStart!!, lastEnd!!, sessionSteps))
                             } else {
-                                Log.d("HC_Steps", "Discarding short walk: ${sessionDuration}min < ${minSessionMinutes}min")
+                                Log.d("HC_Steps", "Discarding: ${sessionDurationMins.toInt()}min, $sessionSteps steps, ${avgStepsPerMin.toInt()} avg spm")
                             }
                         }
                         // Start new session

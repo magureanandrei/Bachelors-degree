@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.CgmTrend
+import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
@@ -18,6 +19,9 @@ import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
 import com.example.diabetesapp.utils.CgmReading
 import com.example.diabetesapp.utils.HealthConnectHelper
+import com.example.diabetesapp.utils.HypoPredictionCalculator
+import com.example.diabetesapp.utils.IobCalculator
+import com.example.diabetesapp.utils.IobResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -67,6 +71,12 @@ class DashboardViewModel(
     private val _recentWorkouts = MutableStateFlow<List<ExerciseSessionRecord>>(emptyList())
     val recentWorkouts: StateFlow<List<ExerciseSessionRecord>> = _recentWorkouts.asStateFlow()
 
+    private val _iobResult = MutableStateFlow<IobResult?>(null)
+    val iobResult: StateFlow<IobResult?> = _iobResult.asStateFlow()
+
+    private val _hypoPrediction = MutableStateFlow<HypoPrediction?>(null)
+    val hypoPrediction: StateFlow<HypoPrediction?> = _hypoPrediction.asStateFlow()
+
     private val _hcWorkoutLogs = MutableStateFlow<List<BolusLog>>(emptyList())
 
     private val _dailySteps = MutableStateFlow(0L)
@@ -92,6 +102,7 @@ class DashboardViewModel(
                     xdripTreatments = _xdripTreatmentsCache.value,
                     hcWorkouts = _hcWorkoutLogs.value
                 )
+                recalculateIob()
             }
         }
     }
@@ -106,6 +117,23 @@ class DashboardViewModel(
             .sortedBy { it.timestamp }
         Log.d("DashboardVM", "Graph events: ${combined.size} total (${localLogs.size} local + ${xdripTreatments.size} xDrip + ${hcWorkouts.size} HC workouts)")
         _graphEvents.value = combined
+    }
+
+    fun recalculateIob() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val logs = allLogs.value
+            val currentSettings = settings.value
+            val latestReading = _latestReading.value  // capture current value
+            val xdripIob = latestReading?.iob
+            val xdripTimestamp = latestReading?.timestamp  // pass timestamp too
+            val result = IobCalculator.calculate(logs, currentSettings, xdripIob, xdripTimestamp)
+            withContext(Dispatchers.Main) {
+                _iobResult.value = result
+            }
+        }
+    }
+    private fun calculateHypoPrediction(readings: List<CgmReading>, hypoLimit: Float) {
+        _hypoPrediction.value = HypoPredictionCalculator.calculate(readings, hypoLimit)
     }
 
     fun fetchHistoryData() {
@@ -146,7 +174,7 @@ class DashboardViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val isCgmEnabled = settings.value.isCgmEnabled
-                val isAidPump = settings.value.isAidPump  // was isPumpUser
+                val isAidPump = settings.value.isAidPump
                 val dayStart = get24hStartTimestamp()
 
                 if (isCgmEnabled) {
@@ -157,7 +185,7 @@ class DashboardViewModel(
                     val todayXDrip = if (isAidPump) {
                         val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
                         xdripTreatments
-                            .filter { it.timestamp >= dayStart }  // removed effectiveDataStart filter
+                            .filter { it.timestamp >= dayStart }
                             .map { treatment ->
                                 treatment.copy(
                                     bloodGlucose = findClosestBg(treatment.timestamp, history)
@@ -169,9 +197,23 @@ class DashboardViewModel(
 
                     _xdripTreatmentsCache.value = todayXDrip
 
+                    // Persist xDrip treatments that have a matched BG and aren't already in DB
+                    val existingLogs = allLogs.value
+                    todayXDrip.forEach { treatment ->
+                        val alreadySaved = existingLogs.any { existing ->
+                            Math.abs(existing.timestamp - treatment.timestamp) <= 2 * 60 * 1000L
+                                    && existing.notes == "Auto-entry via CareLink"
+                        }
+                        if (!alreadySaved && treatment.bloodGlucose > 0) {
+                            repository.insert(treatment)
+                        }
+                    }
+
                     withContext(Dispatchers.Main) {
                         _latestReading.value = latest
-                        _cgmReadings.value = history  // removed glucoseSourceChangedAt filter
+                        recalculateIob()
+                        _cgmReadings.value = history
+                        calculateHypoPrediction(history, settings.value.hypoLimit)
                         val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
                         rebuildGraphEvents(
                             localLogs = localLogs,
@@ -227,20 +269,34 @@ class DashboardViewModel(
 
             val dayStart = get24hStartTimestamp()
 
-            val confirmedWorkoutLogs = records.mapNotNull { record ->
+            // All ExerciseSessionRecords come from Strava — drop Walking types
+            val stravaActivities = records.mapNotNull { record ->
                 val startMs = record.startTime.toEpochMilli()
                 if (startMs < dayStart) return@mapNotNull null
+
                 val durationMinutes = ChronoUnit.MINUTES.between(
                     record.startTime, record.endTime
                 ).toFloat()
+
                 val sportType = when (record.exerciseType) {
-                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "Walking"
+                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> return@mapNotNull null
                     ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "Running"
                     ExerciseSessionRecord.EXERCISE_TYPE_BIKING -> "Cycling"
                     ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,
                     ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "Swimming"
                     else -> "Workout"
                 }
+
+                val avgHr = helper.getAverageHeartRateForSession(record.startTime, record.endTime)
+                val intensity = when {
+                    avgHr == null -> "Medium"
+                    avgHr >= 160  -> "High"
+                    avgHr >= 130  -> "Medium"
+                    else          -> "Low"
+                }
+
+                Log.d("HC_Workouts", "$sportType: avgHR=${avgHr?.toInt()}, intensity=$intensity")
+
                 BolusLog(
                     id = 0,
                     timestamp = startMs,
@@ -253,23 +309,80 @@ class DashboardViewModel(
                     administeredDose = 0.0,
                     isSportModeActive = true,
                     sportType = sportType,
-                    sportIntensity = "Medium",
+                    sportIntensity = intensity,
                     sportDuration = durationMinutes,
-                    notes = "Auto-imported from Health Connect",
+                    notes = "Auto-imported from Strava",
                     clinicalSuggestion = null
                 )
             }
 
             val todayWalks = detectedWalks.filter { it.timestamp >= dayStart }
 
-            val bucketMs = 10 * 60 * 1000L
-            val allWorkouts = (confirmedWorkoutLogs + todayWalks)
-                .groupBy { it.timestamp / bucketMs }
-                .map { (_, entries) ->
-                    entries.firstOrNull { it.notes == "Auto-imported from Health Connect" }
-                        ?: entries.first()
+            // Suppress step-detected walks that are >50% overlapped by a Strava activity
+            val filteredWalks = todayWalks.filter { walk ->
+                val walkStart = walk.timestamp
+                val walkEnd = walkStart + (walk.sportDuration!! * 60 * 1000L).toLong()
+                val walkDuration = walkEnd - walkStart
+                stravaActivities.none { activity ->
+                    val actStart = activity.timestamp
+                    val actEnd = actStart + (activity.sportDuration!! * 60 * 1000L).toLong()
+                    val overlapStart = maxOf(walkStart, actStart)
+                    val overlapEnd = minOf(walkEnd, actEnd)
+                    val overlapMs = (overlapEnd - overlapStart).coerceAtLeast(0L)
+                    overlapMs > walkDuration * 0.5
                 }
-                .sortedBy { it.timestamp }
+            }
+
+            // Merge walks that are within 15 minutes of each other into one session
+            val mergedWalks = mutableListOf<BolusLog>()
+            val sortedWalks = filteredWalks.sortedBy { it.timestamp }
+
+            sortedWalks.forEach { walk ->
+                val last = mergedWalks.lastOrNull()
+                if (last != null) {
+                    val lastEnd = last.timestamp + (last.sportDuration!! * 60 * 1000L).toLong()
+                    val gapMs = walk.timestamp - lastEnd
+                    if (gapMs <= 15 * 60 * 1000L && last.sportType == walk.sportType) {
+                        // Merge into the last walk — extend its duration
+                        val newDuration = ((walk.timestamp + (walk.sportDuration!! * 60 * 1000L).toLong()
+                                - last.timestamp) / 60000f)
+                        mergedWalks[mergedWalks.lastIndex] = last.copy(sportDuration = newDuration)
+                    } else {
+                        mergedWalks.add(walk)
+                    }
+                } else {
+                    mergedWalks.add(walk)
+                }
+            }
+
+            val allWorkouts = (stravaActivities + mergedWalks).sortedBy { it.timestamp }
+
+            // Persist any new activities that aren't already in the DB
+            val existingLogs = allLogs.value
+            allWorkouts.forEach { workout ->
+                if (workout.sportType == "Walking" && workout.notes.startsWith("Auto-detected")) {
+                    // Remove any existing walk entries that fall within this merged walk's time window
+                    val workoutEnd = workout.timestamp + (workout.sportDuration!! * 60 * 1000L).toLong()
+                    existingLogs.filter { existing ->
+                        existing.isSportModeActive &&
+                                existing.sportType == "Walking" &&
+                                existing.timestamp >= workout.timestamp - 60 * 1000L &&
+                                existing.timestamp <= workoutEnd
+                    }.forEach { duplicate ->
+                        repository.delete(duplicate)
+                    }
+                    repository.insert(workout)
+                } else {
+                    val alreadySaved = existingLogs.any { existing ->
+                        existing.isSportModeActive &&
+                                Math.abs(existing.timestamp - workout.timestamp) <= 2 * 60 * 1000L &&
+                                existing.sportType == workout.sportType
+                    }
+                    if (!alreadySaved) {
+                        repository.insert(workout)
+                    }
+                }
+            }
 
             withContext(Dispatchers.Main) {
                 _recentWorkouts.value = records

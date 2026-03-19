@@ -126,7 +126,7 @@ object CgmHelper {
                     val bgValue = item.optInt("sgv", 0)
                     val timestamp = item.optLong("date", 0L)
 
-                    if (bgValue > 0 && timestamp > 0L) {
+                    if (timestamp > 0L) {
                         readings.add(
                             CgmReading(
                                 timestamp = timestamp,

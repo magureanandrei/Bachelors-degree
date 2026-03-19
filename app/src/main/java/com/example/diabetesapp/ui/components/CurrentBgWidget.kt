@@ -56,65 +56,42 @@ fun CurrentBgWidget(
 
     Row(
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // --- BG VALUE COLUMN ---
-        Column {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = if (bgValue > 0) bgValue.toString() else "--",
-                    fontSize = 44.sp,
-                    fontWeight = FontWeight.Black,
-                    color = widgetColor.copy(alpha = bgAlpha), // FADED
-                    lineHeight = 44.sp
-                )
-
-                Text(
-                    text = " mg/dL",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = widgetColor.copy(alpha = bgAlpha * 0.6f), // FADED
-                    modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
-                )
-            }
-
-            // Time label stays bright to explain the fading
+        // Left: BG number only
+        Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = timeLabel,
+                text = if (bgValue > 0) bgValue.toString() else "--",
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Black,
+                color = widgetColor.copy(alpha = bgAlpha),
+                lineHeight = 40.sp
+            )
+            Text(
+                " mg/dL",
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = targetColor,
-                modifier = Modifier.padding(start = 2.dp, top = 0.dp)
+                color = widgetColor.copy(alpha = bgAlpha * 0.6f),
+                modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
             )
-        }
-
-        // --- TREND ARROW ---
-        if (isCgmEnabled && !latestReading?.trendString.isNullOrEmpty()) {
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(
-                text = latestReading!!.trendString,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = widgetColor.copy(alpha = bgAlpha), // FADED
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-
-        // --- IOB (STAYS FULL BRIGHTNESS) ---
-        if (isCgmEnabled && latestReading?.iob != null) {
-            Spacer(modifier = Modifier.weight(1f))
-            Column(
-                horizontalAlignment = Alignment.End,
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                Text("IOB", fontSize = 10.sp, color = Color.Gray)
+            if (isCgmEnabled && !latestReading?.trendString.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${latestReading.iob}U",
-                    fontSize = 14.sp,
+                    text = latestReading!!.trendString,
+                    fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1976D2) // FULL OPACITY
+                    color = widgetColor.copy(alpha = bgAlpha)
                 )
             }
         }
+
+        // Right: time label
+        Text(
+            text = timeLabel,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (isStale) Color(0xFFE65100) else Color.Gray,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }

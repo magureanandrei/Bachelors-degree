@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
+import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.utils.CgmReading
 
 @Composable
@@ -47,6 +48,7 @@ fun TimeScaledBgGraph(
     hyperLimit: Float = 180f,
     isCgmEnabled: Boolean,
     settings: BolusSettings,
+    hypoPrediction: HypoPrediction? = null,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -68,7 +70,7 @@ fun TimeScaledBgGraph(
     val minBg = 40f
     val maxBg = 350f
     val rangeBg = maxBg - minBg
-    val topPadding = 40f
+    val topPadding = 0f
     val bottomPadding = 120f
 
     Row(modifier = modifier) {
@@ -144,23 +146,56 @@ fun TimeScaledBgGraph(
                 // 3.5 CONTINUOUS CGM LINE
                 if (cgmReadings.isNotEmpty()) {
                     val cgmPath = Path()
+                    val lowBridgePath = Path()
                     var isFirstPoint = true
+                    var lastValidX = 0f
+                    var lastValidY = 0f
+                    var hadLowGap = false
                     var previousTimestamp = 0L
-                    val maxGapMs = 16 * 60 * 1000L
+                    val maxGapMs = 30 * 60 * 1000L  // 30 min = true sensor dropout, no bridge
+                    val windowEnd = dayStartTimestamp + windowMs.toLong()
 
-                    cgmReadings.filter { it.bgValue > 0 }.forEach { reading ->
+                    cgmReadings.sortedBy { it.timestamp }.forEach { reading ->
+                        val inWindow = reading.timestamp >= dayStartTimestamp && reading.timestamp <= windowEnd
+                        val timeSinceLast = if (previousTimestamp > 0L) reading.timestamp - previousTimestamp else 0L
+                        val isTrueGap = previousTimestamp > 0L && timeSinceLast > maxGapMs
+
+                        if (reading.bgValue <= 0) {
+                            // xDrip sent a LOW reading — flag it if it's not a true gap
+                            if (inWindow && !isTrueGap) hadLowGap = true
+                            previousTimestamp = reading.timestamp
+                            return@forEach
+                        }
+
                         val x = timeToX(reading.timestamp)
                         val y = bgToY(reading.bgValue.toFloat().coerceIn(minBg, maxBg))
-                        val isGap = previousTimestamp > 0L && (reading.timestamp - previousTimestamp > maxGapMs)
 
-                        if (reading.timestamp >= dayStartTimestamp && reading.timestamp <= dayStartTimestamp + windowMs.toLong()) {
-                            if (isFirstPoint || isGap) {
-                                cgmPath.moveTo(x, y)
-                                isFirstPoint = false
-                            } else {
-                                cgmPath.lineTo(x, y)
+                        if (inWindow) {
+                            when {
+                                isFirstPoint -> {
+                                    cgmPath.moveTo(x, y)
+                                    isFirstPoint = false
+                                }
+                                isTrueGap -> {
+                                    // >30 min gap — just break the line, no bridge
+                                    cgmPath.moveTo(x, y)
+                                    hadLowGap = false
+                                }
+                                hadLowGap -> {
+                                    // Came back up from LOW — draw red bridge
+                                    lowBridgePath.moveTo(lastValidX, lastValidY)
+                                    lowBridgePath.lineTo(x, y)
+                                    cgmPath.moveTo(x, y)
+                                    hadLowGap = false
+                                }
+                                else -> {
+                                    cgmPath.lineTo(x, y)
+                                }
                             }
+                            lastValidX = x
+                            lastValidY = y
                         }
+
                         previousTimestamp = reading.timestamp
                     }
 
@@ -185,6 +220,31 @@ fun TimeScaledBgGraph(
                         brush = cgmBrush,
                         style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
+
+                    // Solid red bridge for LOW periods (under 50)
+                    drawPath(
+                        path = lowBridgePath,
+                        color = Color(0xFFE53935).copy(alpha = 0.85f),
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                }
+
+                // 3.6 HYPO PREDICTION LINE
+                hypoPrediction?.let { prediction ->
+                    if (prediction.projectionPoints.size >= 2) {
+                        val points = prediction.projectionPoints
+                        points.zipWithNext().forEachIndexed { index, (from, to) ->
+                            val progress = index.toFloat() / points.size
+                            val fadedColor = Color(0xFFE53935).copy(alpha = 0.85f * (1f - progress * 0.6f))
+                            drawLine(
+                                color = fadedColor,
+                                start = Offset(timeToX(from.first), bgToY(from.second.coerceIn(minBg, maxBg))),
+                                end = Offset(timeToX(to.first), bgToY(to.second.coerceIn(minBg, maxBg))),
+                                strokeWidth = 2.5f.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 8f), 0f)
+                            )
+                        }
+                    }
                 }
 
                 // 4. SPORT DURATIONS
@@ -192,25 +252,39 @@ fun TimeScaledBgGraph(
                     val startX = timeToX(sportLog.timestamp)
                     val endX = timeToX(sportLog.timestamp + (sportLog.sportDuration!!.toLong() * 60 * 1000L))
                     val bandWidth = (endX - startX).coerceAtLeast(4f)
-                    val isPlanned = sportLog.status == "PLANNED"
-                    val sportColor = Color(0xFF26A69A)
-                    val fillColor = if (isPlanned) Color(0xFFFF9800).copy(alpha = 0.15f) else sportColor.copy(alpha = 0.13f)
-                    val borderColor = if (isPlanned) Color(0xFFFF9800) else sportColor
-                    val pathEffect = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+                    val isPlanned  = sportLog.status == "PLANNED"
+                    val isStepWalk = sportLog.notes.startsWith("Auto-detected")
 
-                    drawRect(color = fillColor, topLeft = Offset(startX, topPadding), size = Size(bandWidth, graphHeight))
-                    drawLine(borderColor, Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), 3f, pathEffect = pathEffect)
-                    drawLine(borderColor, Offset(startX + bandWidth, topPadding), Offset(startX + bandWidth, topPadding + graphHeight), 3f, pathEffect = pathEffect)
+                    val sportColor = when {
+                        isPlanned  -> Color(0xFFFF9800)
+                        isStepWalk -> Color(0xFF78909C)
+                        else       -> Color(0xFF4DB6AC)  // same teal
+                    }
+
+                    val fillAlpha   = if (isStepWalk) 0.08f else 0.3f
+                    val borderAlpha = if (isStepWalk) 0.55f else 0.7f
+                    val strokeWidth = if (isStepWalk) 2f    else 3.5f
+                    val pathEffect  = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
+
+                    drawRect(
+                        color = sportColor.copy(alpha = fillAlpha),
+                        topLeft = Offset(startX, topPadding),
+                        size = Size(bandWidth, graphHeight)
+                    )
+                    drawLine(sportColor.copy(alpha = borderAlpha), Offset(startX, topPadding), Offset(startX, topPadding + graphHeight), strokeWidth, pathEffect = pathEffect)
+                    drawLine(sportColor.copy(alpha = borderAlpha), Offset(startX + bandWidth, topPadding), Offset(startX + bandWidth, topPadding + graphHeight), strokeWidth, pathEffect = pathEffect)
 
                     val label = "${sportLog.sportType ?: "Workout"} · ${sportLog.sportDuration.toInt()}m"
                     val labelResult = textMeasurer.measure(
                         label,
-                        style = TextStyle(color = borderColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(
+                            color = sportColor.copy(alpha = if (isStepWalk) 0.65f else 1.0f),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     )
                     if (bandWidth > labelResult.size.height + 4f) {
-                        val labelX = startX + 4f
-                        val labelY = topPadding + graphHeight / 2f - labelResult.size.width / 2f
-                        translate(left = labelX, top = labelY) {
+                        translate(left = startX + 4f, top = topPadding + graphHeight / 2f - labelResult.size.width / 2f) {
                             rotate(90f) { drawText(labelResult) }
                         }
                     }

@@ -86,7 +86,8 @@ fun HistoryScreen(
                         )
                     }
                     items(dailyLogs) { log ->
-                        LogEntryCard(log = log, onDelete = { viewModel.deleteLog(log) })
+                        LogEntryCard(log = log, onDelete = { viewModel.deleteLog(log) },
+                            hypoLimit = settings.hypoLimit, hyperLimit = settings.hyperLimit)
                     }
                 }
             }
