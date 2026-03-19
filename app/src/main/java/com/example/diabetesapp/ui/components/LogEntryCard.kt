@@ -199,7 +199,7 @@ fun LogEntryCard(
                         if (log.bloodGlucose > 0) {
                             val color = when {
                                 log.bloodGlucose < hypoLimit -> Color(0xFFE53935)
-                                log.bloodGlucose > hyperLimit -> Color(0xFFFFB74D)
+                                log.bloodGlucose > hyperLimit -> Color(0xFFFF8F00)
                                 else -> Color(0xFF00897B)
                             }
                             Text("BG: ${log.bloodGlucose.toInt()}", fontWeight = FontWeight.Bold, color = color, fontSize = 13.sp)

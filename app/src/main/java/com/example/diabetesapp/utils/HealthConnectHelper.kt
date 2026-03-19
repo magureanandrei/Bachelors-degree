@@ -122,15 +122,15 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
                     if (sessionStart == null || gapFromLast > maxGapMinutes) {
                         // Save previous session if long enough
                         if (sessionStart != null && lastEnd != null) {
-                            val sessionDuration = ChronoUnit.MINUTES.between(
-                                sessionStart, lastEnd
-                            )
-                            if (sessionDuration >= minSessionMinutes) {
-                                walkingSessions.add(
-                                    buildWalkLog(sessionStart!!, lastEnd!!, sessionSteps)
-                                )
+                            val sessionDurationMins = ChronoUnit.MINUTES.between(sessionStart, lastEnd).toDouble()
+                            val avgStepsPerMin = if (sessionDurationMins > 0) sessionSteps / sessionDurationMins else 0.0
+
+                            if (sessionDurationMins >= minSessionMinutes
+                                && sessionSteps >= 400L
+                                && avgStepsPerMin >= 40.0) {
+                                walkingSessions.add(buildWalkLog(sessionStart!!, lastEnd!!, sessionSteps))
                             } else {
-                                Log.d("HC_Steps", "Discarding short walk: ${sessionDuration}min < ${minSessionMinutes}min")
+                                Log.d("HC_Steps", "Discarding: ${sessionDurationMins.toInt()}min, $sessionSteps steps, ${avgStepsPerMin.toInt()} avg spm")
                             }
                         }
                         // Start new session
