@@ -34,7 +34,12 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
+fun CompactLogEntryCard(
+    log: BolusLog,
+    hypoLimit: Float = 70f,
+    hyperLimit: Float = 180f,
+    onClick: () -> Unit
+) {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = formatter.format(Date(log.timestamp))
     val isAutoEntry = log.notes == "Auto-entry via CareLink"
@@ -128,7 +133,11 @@ fun CompactLogEntryCard(log: BolusLog, onClick: () -> Unit) {
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1.5f)) {
                     if (log.bloodGlucose > 0) {
-                        val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
+                        val color = when {
+                            log.bloodGlucose < hypoLimit -> Color(0xFFE53935)
+                            log.bloodGlucose > hyperLimit -> Color(0xFFFFB74D)
+                            else -> Color(0xFF00897B)
+                        }
                         Text("${log.bloodGlucose}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
                     } else {
                         // Show "Auto-entry" label where BG would normally be

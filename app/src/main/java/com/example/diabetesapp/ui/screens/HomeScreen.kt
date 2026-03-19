@@ -257,7 +257,9 @@ fun HomeScreen(
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 todaysLogs.reversed().forEach { log ->
-                    CompactLogEntryCard(log = log) {
+                    CompactLogEntryCard(log = log,
+                        hypoLimit = settings.hypoLimit,
+                        hyperLimit = settings.hyperLimit) {
                         selectedLogForModal = log
                     }
                 }

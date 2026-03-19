@@ -46,7 +46,12 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
+fun LogEntryCard(
+    log: BolusLog,
+    hypoLimit: Float = 70f,
+    hyperLimit: Float = 180f,
+    onDelete: () -> Unit
+){
     val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = timeFormatter.format(Date(log.timestamp))
 
@@ -178,7 +183,11 @@ fun LogEntryCard(log: BolusLog, onDelete: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         if (log.bloodGlucose > 0) {
-                            val color = if (log.bloodGlucose > 180 || log.bloodGlucose < 70) Color.Red else Color(0xFF00897B)
+                            val color = when {
+                                log.bloodGlucose < hypoLimit -> Color(0xFFE53935)
+                                log.bloodGlucose > hyperLimit -> Color(0xFFFFB74D)
+                                else -> Color(0xFF00897B)
+                            }
                             Text("BG: ${log.bloodGlucose.toInt()}", fontWeight = FontWeight.Bold, color = color, fontSize = 13.sp)
                         }
                         if (log.carbs > 0) Text("${log.carbs.toInt()}g carbs", color = Color.Gray, fontSize = 12.sp)
