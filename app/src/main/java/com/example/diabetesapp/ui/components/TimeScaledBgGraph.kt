@@ -257,13 +257,13 @@ fun TimeScaledBgGraph(
 
                     val sportColor = when {
                         isPlanned  -> Color(0xFFFF9800)
-                        isStepWalk -> Color(0xFF78909C)  // muted blue-grey
-                        else       -> Color(0xFF26A69A)  // teal — Strava, manual, all the same
+                        isStepWalk -> Color(0xFF78909C)
+                        else       -> Color(0xFF4DB6AC)  // same teal
                     }
 
-                    val fillAlpha   = if (isStepWalk) 0.08f else 0.13f
-                    val borderAlpha = if (isStepWalk) 0.55f else 1.0f
-                    val strokeWidth = if (isStepWalk) 2f    else 3f
+                    val fillAlpha   = if (isStepWalk) 0.08f else 0.3f
+                    val borderAlpha = if (isStepWalk) 0.55f else 0.7f
+                    val strokeWidth = if (isStepWalk) 2f    else 3.5f
                     val pathEffect  = if (isPlanned) PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f) else null
 
                     drawRect(

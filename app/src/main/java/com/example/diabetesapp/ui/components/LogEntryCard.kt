@@ -60,6 +60,7 @@ fun LogEntryCard(
 
     val isAutoEntry = log.notes?.contains("Auto-imported") == true
             || log.notes?.startsWith("Auto-detected") == true
+            || log.notes == "Auto-entry via CareLink"
     val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
 
     Card(
@@ -69,7 +70,13 @@ fun LogEntryCard(
             else Modifier
         ),
         colors = CardDefaults.cardColors(
-            containerColor = if (isWalk) Color(0xFFF5F7F8) else Color.White
+            containerColor = when {
+                isWalk -> Color(0xFFF5F7F8)
+                log.eventType == "SPORT" && log.status?.uppercase() == "PLANNED" -> Color(0xFFFFF3E0) // Optional: Light orange background for pending
+                log.eventType == "SPORT" && !isWalk -> Color(0xFF4DB6AC) // <-- YOUR DARK TEAL BACKGROUND HERE
+                isAutoEntry -> Color(0xFFE0F2F1)
+                else -> Color.White
+            }
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isWalk) 0.dp else 1.dp),
         shape = RoundedCornerShape(10.dp)
@@ -123,16 +130,13 @@ fun LogEntryCard(
                         }
                         "SPORT" -> {
                             val sportColor = when {
-                                log.status == "PLANNED" -> Color(0xFFFF9800)
+                                log.status?.uppercase() == "PLANNED" -> Color(0xFFFF9800) // Added uppercase() just in case!
                                 isWalk -> Color(0xFF90A4AE)
-                                else -> Color(0xFF00695C)
+                                else -> Color(0xFF00695C) // <-- Changed to match compact card
                             }
                             Icon(Icons.Default.DirectionsRun, null, modifier = Modifier.size(14.dp), tint = sportColor)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                if (isWalk) "Walk" else "Sport Event",
-                                fontSize = 12.sp, color = sportColor, fontWeight = FontWeight.Bold
-                            )
+                            Text(if (isWalk) "Walk" else "Sport Event", fontSize = 12.sp, color = sportColor, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -142,17 +146,23 @@ fun LogEntryCard(
 
             // --- THE DYNAMIC BODY ---
             if (log.eventType == "SPORT") {
-                // SPORT-ONLY LAYOUT
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
                             "${log.sportDuration?.toInt()} min ${log.sportType ?: ""}",
                             fontWeight = FontWeight.Bold,
-                            fontSize = if (isWalk) 13.sp else 15.sp,
+                            fontSize = 13.sp,
                             color = if (isWalk) Color(0xFF78909C) else Color.DarkGray
                         )
-                        if (!isWalk) {
-                            Text("Intensity: ${log.sportIntensity ?: ""}", fontSize = 13.sp, color = Color.Gray)
+                        if (!isWalk && !log.sportIntensity.isNullOrBlank()) {
+                            Text("· ${log.sportIntensity}", fontSize = 12.sp, color = Color.DarkGray)
                         }
                     }
                     val isAutoActivity = log.notes?.contains("Auto-imported") == true
@@ -177,7 +187,11 @@ fun LogEntryCard(
                 }
             } else {
                 // STANDARD DIABETES LAYOUT (BG, Carbs, Insulin)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -193,15 +207,28 @@ fun LogEntryCard(
                         if (log.carbs > 0) Text("${log.carbs.toInt()}g carbs", color = Color.Gray, fontSize = 12.sp)
                     }
 
-                    Column(horizontalAlignment = Alignment.End) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         if (log.administeredDose > 0) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                                Icon(Icons.Default.Vaccines, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(16.dp))
-                            }
                             if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
-                                Text("Suggested: ${String.format(Locale.US, "%.1f", log.suggestedDose)} U", color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${String.format(Locale.US, "%.1f", log.suggestedDose)}U ",
+                                    color = Color(0xFF81C784),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
+                            Text(
+                                "${String.format(Locale.US, "%.1f", log.administeredDose)} U",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
+                            )
+                            Icon(
+                                Icons.Default.Vaccines,
+                                contentDescription = null,
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.padding(start = 4.dp).size(14.dp)
+                            )
                         }
                     }
                 }
@@ -214,7 +241,7 @@ fun LogEntryCard(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     if (log.notes.isNotBlank()) {
-                        Text("Notes:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text("Notes:", fontSize = 12.sp, color = Color.DarkGray, fontWeight = FontWeight.Bold)
                         Text(log.notes, fontSize = 13.sp, color = Color.DarkGray)
                         Spacer(modifier = Modifier.height(8.dp))
                     }

@@ -55,8 +55,10 @@ fun CompactLogEntryCard(
         ),
         colors = CardDefaults.cardColors(
             containerColor = when {
-                isWalk -> Color(0xFFECEFF1)        // more visible grey
-                isAutoEntry -> Color(0xFFF5FFFE)
+                isWalk -> Color(0xFFECEFF1)
+                log.eventType == "SPORT" && log.status?.uppercase() == "PLANNED" -> Color(0xFFFFF3E0)
+                log.eventType == "SPORT" && !isWalk -> Color(0xFF4DB6AC) // <-- DARK TEAL BACKGROUND HERE
+                isAutoEntry -> Color(0xFFE0F2F1)
                 else -> Color.White
             }
         ),
