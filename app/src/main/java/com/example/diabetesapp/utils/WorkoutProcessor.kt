@@ -2,6 +2,7 @@ package com.example.diabetesapp.utils
 
 import android.util.Log
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.StepsRecord
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import java.time.temporal.ChronoUnit
@@ -76,21 +77,46 @@ object WorkoutProcessor {
     suspend fun persistNew(
         allWorkouts: List<BolusLog>,
         existingLogs: List<BolusLog>,
-        repository: BolusLogRepository
+        repository: BolusLogRepository,
+        stepRecords: List<StepsRecord> = emptyList()
     ) {
         allWorkouts.forEach { workout ->
             if (workout.sportType == "Walking" && workout.notes.startsWith("Auto-detected")) {
-                // Remove stale duplicate walk entries within this merged window
                 val workoutEnd = workout.timestamp + (workout.sportDuration!! * 60 * 1000L).toLong()
+
+                // Re-sum steps for this walk's full time window
+                val freshSteps = stepRecords
+                    .filter { it.startTime.toEpochMilli() >= workout.timestamp - 60 * 1000L
+                            && it.endTime.toEpochMilli() <= workoutEnd + 60 * 1000L }
+                    .sumOf { it.count }
+
+                val updatedNotes = if (freshSteps > 0)
+                    "Auto-detected via steps (~$freshSteps steps)"
+                else workout.notes
+
+                // Skip if steps are suspiciously low
+                if (freshSteps in 1..399) {
+                    Log.d("WorkoutProcessor", "Skipping low-step walk: $freshSteps steps")
+                    // Also clean up if already persisted
+                    existingLogs.filter { existing ->
+                        existing.isSportModeActive &&
+                                existing.sportType == "Walking" &&
+                                existing.timestamp >= workout.timestamp - 60 * 1000L &&
+                                existing.timestamp <= workoutEnd
+                    }.forEach { repository.delete(it) }
+                    return@forEach
+                }
+
+                // Remove stale duplicates and re-insert with fresh steps
                 existingLogs.filter { existing ->
                     existing.isSportModeActive &&
                             existing.sportType == "Walking" &&
                             existing.timestamp >= workout.timestamp - 60 * 1000L &&
                             existing.timestamp <= workoutEnd
-                }.forEach { duplicate ->
-                    repository.delete(duplicate)
-                }
-                repository.insert(workout)
+                }.forEach { repository.delete(it) }
+
+                repository.insert(workout.copy(notes = updatedNotes))
+
             } else {
                 val alreadySaved = existingLogs.any { existing ->
                     existing.isSportModeActive &&

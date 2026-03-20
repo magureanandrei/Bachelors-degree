@@ -119,7 +119,7 @@ object IobCalculator {
             }
             else -> {
                 val totalIob = calculateFromHistory(logs, settings)
-                val hasStaleTimestamp = xdripTimestamp != null // we had a reading but lost connection
+                val hasStaleTimestamp = xdripTimestamp != null && minutesSinceLast > 20
                 IobResult(
                     totalIob = totalIob,
                     fromManualDoses = totalIob,

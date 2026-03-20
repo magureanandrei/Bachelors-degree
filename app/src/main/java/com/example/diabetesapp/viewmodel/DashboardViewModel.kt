@@ -251,7 +251,12 @@ class DashboardViewModel(
             val dayStart = DateTimeUtils.get24hStartTimestamp()
 
             val allWorkouts = WorkoutProcessor.process(records, detectedWalks, helper, dayStart)
-            WorkoutProcessor.persistNew(allWorkouts, allLogs.value, repository)
+            WorkoutProcessor.persistNew(
+                allWorkouts = allWorkouts,
+                existingLogs = allLogs.value,
+                repository = repository,
+                stepRecords = stepRecords
+            )
 
             withContext(Dispatchers.Main) {
                 _recentWorkouts.value = records
