@@ -3,7 +3,19 @@ package com.example.diabetesapp.utils
 import android.util.Log
 import com.example.diabetesapp.data.models.BolusLog
 
+enum class GraphMode {
+    AID_CGM,    // CGM line + CareLink treatments + hypo prediction
+    CGM_ONLY,   // CGM line + no treatments + hypo prediction
+    MANUAL      // BG dots only, no CGM line, no hypo prediction
+}
+
 object GraphDataBuilder {
+
+    fun resolveGraphMode(isCgmEnabled: Boolean, isAidPump: Boolean): GraphMode = when {
+        isAidPump && isCgmEnabled -> GraphMode.AID_CGM
+        isCgmEnabled -> GraphMode.CGM_ONLY
+        else -> GraphMode.MANUAL
+    }
 
     fun buildGraphEvents(
         localLogs: List<BolusLog>,

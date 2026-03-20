@@ -25,6 +25,7 @@ import com.example.diabetesapp.utils.IobCalculator
 import com.example.diabetesapp.utils.IobResult
 import com.example.diabetesapp.utils.WorkoutProcessor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -106,13 +107,16 @@ class DashboardViewModel(
         }
     }
 
+    private var iobJob: Job? = null
+
     fun recalculateIob() {
-        viewModelScope.launch(Dispatchers.IO) {
+        iobJob?.cancel()
+        iobJob = viewModelScope.launch(Dispatchers.IO) {
             val logs = allLogs.value
             val currentSettings = settings.value
-            val latestReading = _latestReading.value  // capture current value
+            val latestReading = _latestReading.value
             val xdripIob = latestReading?.iob
-            val xdripTimestamp = latestReading?.timestamp  // pass timestamp too
+            val xdripTimestamp = latestReading?.timestamp
             val result = IobCalculator.calculate(logs, currentSettings, xdripIob, xdripTimestamp)
             withContext(Dispatchers.Main) {
                 _iobResult.value = result
@@ -121,6 +125,7 @@ class DashboardViewModel(
     }
 
     private fun calculateHypoPrediction(readings: List<CgmReading>, hypoLimit: Float) {
+        if (!settings.value.isCgmEnabled) return
         _hypoPrediction.value = HypoPredictionCalculator.calculate(readings, hypoLimit)
     }
 
@@ -185,10 +190,10 @@ class DashboardViewModel(
         persistCareLinkTreatments(todayXDrip)
 
         withContext(Dispatchers.Main) {
-            _latestReading.value = latest
+            if (latest != null) _latestReading.value = latest  // only update if we got a fresh reading
             _cgmReadings.value = history
             calculateHypoPrediction(history, settings.value.hypoLimit)
-            recalculateIob()
+            recalculateIob()  // always call — uses stale timestamp from last known reading
             _graphEvents.value = GraphDataBuilder.buildGraphEvents(
                 localLogs = GraphDataBuilder.filterForDay(allLogs.value, dayStart),
                 xdripTreatments = todayXDrip,
@@ -203,7 +208,7 @@ class DashboardViewModel(
         val history = CgmHelper.getBgHistoryFromXDrip()
 
         withContext(Dispatchers.Main) {
-            _latestReading.value = latest
+            if (latest != null) _latestReading.value = latest  // same fix here
             _cgmReadings.value = history
             calculateHypoPrediction(history, settings.value.hypoLimit)
             recalculateIob()

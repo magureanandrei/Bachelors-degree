@@ -36,6 +36,7 @@ import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.utils.CgmReading
+import com.example.diabetesapp.utils.GraphMode
 
 @Composable
 fun TimeScaledBgGraph(
@@ -46,7 +47,7 @@ fun TimeScaledBgGraph(
     targetBg: Float = 100f,
     hypoLimit: Float = 70f,
     hyperLimit: Float = 180f,
-    isCgmEnabled: Boolean,
+    graphMode: GraphMode,
     settings: BolusSettings,
     hypoPrediction: HypoPrediction? = null,
     modifier: Modifier = Modifier
@@ -312,7 +313,7 @@ fun TimeScaledBgGraph(
                 }
 
                 // 6. MANUAL BG DOTS
-                if (!isCgmEnabled) {
+                if (graphMode == GraphMode.MANUAL) {
                     val bgLogs = logs.filter {
                         it.bloodGlucose > 0
                                 && it.notes != "Auto-entry via CareLink"

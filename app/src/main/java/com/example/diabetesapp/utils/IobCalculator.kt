@@ -118,14 +118,14 @@ object IobCalculator {
                 )
             }
             else -> {
-                // No xDrip or too stale — fall back to DB only
                 val totalIob = calculateFromHistory(logs, settings)
+                val hasStaleTimestamp = xdripTimestamp != null // we had a reading but lost connection
                 IobResult(
                     totalIob = totalIob,
                     fromManualDoses = totalIob,
                     fromPump = null,
                     hasManualOnTopOfPump = false,
-                    isEstimated = xdripIob != null, // had pump but lost it
+                    isEstimated = hasStaleTimestamp,
                     minutesSinceLastReading = minutesSinceLast
                 )
             }

@@ -13,12 +13,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.utils.IobResult
 import java.util.Locale
 
 @Composable
 fun IobWidget(
     iobResult: IobResult?,
+    therapyType: TherapyType,
     modifier: Modifier = Modifier
 ) {
     val iob = iobResult?.totalIob ?: 0.0
@@ -30,58 +32,67 @@ fun IobWidget(
         hasWarning -> Color(0xFFE65100)
         isEstimated && minutesStale > 30 -> Color(0xFFE65100)
         isEstimated -> Color(0xFFF9A825)
+        therapyType == TherapyType.PUMP_STANDARD -> Color(0xFF1976D2).copy(alpha = 0.7f)
         else -> Color(0xFF1976D2)
     }
 
+    // Status tag varies by therapy type
     val statusText = when {
+        // AID pump states
         hasWarning -> "⚠ manual dose added"
         isEstimated && minutesStale > 30 -> "⚠ may be inaccurate"
         isEstimated -> "~ estimated (${minutesStale}m)"
-        iobResult?.fromPump != null -> ""
+        therapyType == TherapyType.PUMP_AID && iobResult?.fromPump != null -> "from pump"
+
+        // Standard pump — bolus only, basal missing
+        therapyType == TherapyType.PUMP_STANDARD -> "bolus only"
+
+        // MDI — bolus tracked, basal is separate long-acting
+        therapyType == TherapyType.MDI -> "bolus only"
+
         else -> ""
     }
 
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        // Left: label + number inline, all same baseline
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "IOB",
+                    fontSize = 11.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    String.format(Locale.US, "%.2f", iob),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = iobColor
+                )
+                Text(
+                    " U",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+            }
             Text(
-                "IOB",
-                fontSize = 11.sp,
-                color = Color.Gray,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                String.format(Locale.US, "%.2f", iob),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = iobColor
-            )
-            Text(
-                " U",
-                fontSize = 11.sp,
-                color = Color.Gray
+                statusText,
+                fontSize = 10.sp,
+                color = iobColor.copy(alpha = 0.85f),
+                fontWeight = if (hasWarning || (isEstimated && minutesStale > 30))
+                    FontWeight.Bold else FontWeight.Normal
             )
         }
 
-        // Right: status
-        Text(
-            statusText,
-            fontSize = 10.sp,
-            color = iobColor.copy(alpha = 0.85f),
-            fontWeight = if (hasWarning || (isEstimated && minutesStale > 30))
-                FontWeight.Bold else FontWeight.Normal
-        )
-    }
-
-        // Warning badge if manual dose on top of pump
+        // AID: manual on top of pump warning badge
         if (hasWarning) {
             Row(
                 modifier = Modifier
+                    .padding(top = 4.dp)
                     .background(Color(0xFFFFF3E0), RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -101,4 +112,25 @@ fun IobWidget(
                 )
             }
         }
+
+        // MDI: basal awareness note
+        if (therapyType == TherapyType.MDI) {
+            Text(
+                text = "Long-acting basal not tracked",
+                fontSize = 10.sp,
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+
+        // Standard pump: basal missing note
+        if (therapyType == TherapyType.PUMP_STANDARD) {
+            Text(
+                text = "Basal contribution not yet included",
+                fontSize = 10.sp,
+                color = Color(0xFF1976D2).copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
     }
+}

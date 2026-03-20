@@ -40,6 +40,7 @@ import com.example.diabetesapp.ui.components.LogDetailsDialog
 import com.example.diabetesapp.ui.components.PostWorkoutVerificationDialog
 import com.example.diabetesapp.ui.components.TimeScaledBgGraph
 import com.example.diabetesapp.utils.DateTimeUtils
+import com.example.diabetesapp.utils.GraphDataBuilder
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import kotlinx.coroutines.isActive
@@ -192,6 +193,7 @@ fun HomeScreen(
                 )
                 IobWidget(
                     iobResult = iobResult,
+                    therapyType = settings.therapyTypeEnum,
                     modifier = Modifier.padding(horizontal = 2.dp)
                 )
                 HorizontalDivider(
@@ -200,7 +202,12 @@ fun HomeScreen(
                 )
 
                 // 2. The Graph now has its own clean space
-                key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
+                val graphMode = GraphDataBuilder.resolveGraphMode(
+                    isCgmEnabled = settings.isCgmEnabled,
+                    isAidPump = settings.isAidPump
+                )
+
+                key(settings.targetBG, settings.hypoLimit, settings.hyperLimit, graphMode) {
                     Box(modifier = Modifier
                         .fillMaxWidth()
                         .height(200.dp)) {
@@ -212,8 +219,8 @@ fun HomeScreen(
                             targetBg = settings.targetBG,
                             hypoLimit = settings.hypoLimit,
                             hyperLimit = settings.hyperLimit,
-                            isCgmEnabled = isCgmEnabled,
-                            settings=settings,
+                            graphMode = graphMode,
+                            settings = settings,
                             hypoPrediction = hypoPrediction,
                             modifier = Modifier.fillMaxSize()
                         )
