@@ -284,4 +284,12 @@ object CgmHelper {
             emptyList()
         }
     }
+
+    fun findClosestBg(timestamp: Long, cgmReadings: List<CgmReading>): Double {
+        val windowMs = 10 * 60 * 1000L
+        return cgmReadings
+            .filter { Math.abs(it.timestamp - timestamp) <= windowMs }
+            .minByOrNull { Math.abs(it.timestamp - timestamp) }
+            ?.bgValue?.toDouble() ?: 0.0
+    }
 }

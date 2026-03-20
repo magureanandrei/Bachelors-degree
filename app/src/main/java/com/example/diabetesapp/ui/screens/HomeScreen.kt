@@ -39,6 +39,7 @@ import com.example.diabetesapp.ui.components.IobWidget
 import com.example.diabetesapp.ui.components.LogDetailsDialog
 import com.example.diabetesapp.ui.components.PostWorkoutVerificationDialog
 import com.example.diabetesapp.ui.components.TimeScaledBgGraph
+import com.example.diabetesapp.utils.DateTimeUtils
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import kotlinx.coroutines.isActive
@@ -63,7 +64,7 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsState()
 
     // Re-calculate day start when logs change
-    val logicalDayStart = remember { viewModel.get24hStartTimestamp() }
+    val logicalDayStart = remember { DateTimeUtils.get24hStartTimestamp() }
     val graphEndTimestamp = remember { System.currentTimeMillis() + (2.5 * 60 * 60 * 1000L).toLong() }
     val todaysLogs by viewModel.graphEvents.collectAsState()
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
