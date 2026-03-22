@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -13,6 +14,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun DoseBreakdownCard(
@@ -75,6 +79,33 @@ fun DoseBreakdownCard(
                 color = Color.DarkGray
             )
         }
+    }
+
+}
+@Composable
+fun SettingsChangeDivider(timestamp: Long, description: String) {
+    val timeStr = remember(timestamp) {
+        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = Color(0xFFFF9800).copy(alpha = 0.4f)
+        )
+        Text(
+            text = "  $timeStr · Settings Changed  ",
+            fontSize = 9.sp,
+            color = Color(0xFFFF9800).copy(alpha = 0.8f)
+        )
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = Color(0xFFFF9800).copy(alpha = 0.4f)
+        )
     }
 }
 

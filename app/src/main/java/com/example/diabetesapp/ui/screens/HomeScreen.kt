@@ -38,10 +38,12 @@ import com.example.diabetesapp.ui.components.DashboardActionButtons
 import com.example.diabetesapp.ui.components.IobWidget
 import com.example.diabetesapp.ui.components.LogDetailsDialog
 import com.example.diabetesapp.ui.components.PostWorkoutVerificationDialog
+import com.example.diabetesapp.ui.components.SettingsChangeDivider
 import com.example.diabetesapp.ui.components.TimeScaledBgGraph
 import com.example.diabetesapp.utils.CgmReading
 import com.example.diabetesapp.utils.DateTimeUtils
 import com.example.diabetesapp.utils.GraphDataBuilder
+import com.example.diabetesapp.utils.GraphDataBuilder.mergeSettingsChanges
 import com.example.diabetesapp.utils.GraphMode
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
@@ -288,11 +290,18 @@ fun HomeScreen(
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                todaysLogs.reversed().forEach { log ->
-                    CompactLogEntryCard(log = log,
-                        hypoLimit = settings.hypoLimit,
-                        hyperLimit = settings.hyperLimit) {
-                        selectedLogForModal = log
+                todaysLogs.reversed().mergeSettingsChanges().forEach { log ->
+                    if (log.eventType == "SETTINGS_CHANGE") {
+                        SettingsChangeDivider(
+                            timestamp = log.timestamp,
+                            description = log.notes
+                        )
+                    } else {
+                        CompactLogEntryCard(
+                            log = log,
+                            hypoLimit = settings.hypoLimit,
+                            hyperLimit = settings.hyperLimit
+                        ) { selectedLogForModal = log }
                     }
                 }
             }

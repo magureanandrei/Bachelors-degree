@@ -32,4 +32,19 @@ object GraphDataBuilder {
 
     fun filterForDay(logs: List<BolusLog>, dayStart: Long): List<BolusLog> =
         logs.filter { it.timestamp >= dayStart }
+
+    fun List<BolusLog>.mergeSettingsChanges(): List<BolusLog> {
+        val result = mutableListOf<BolusLog>()
+        forEach { log ->
+            if (log.eventType == "SETTINGS_CHANGE") {
+                val last = result.lastOrNull()
+                if (last?.eventType == "SETTINGS_CHANGE") {
+                    // Already have a settings change — skip, we'll just show one divider
+                    return@forEach
+                }
+            }
+            result.add(log)
+        }
+        return result
+    }
 }

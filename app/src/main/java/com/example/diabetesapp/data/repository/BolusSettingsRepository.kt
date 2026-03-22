@@ -110,6 +110,23 @@ class BolusSettingsRepository(context: Context) {
     fun updateHypoLimit(value: Float) = updateField { it.copy(hypoLimit = value) }
     fun updateHyperLimit(value: Float) = updateField { it.copy(hyperLimit = value) }
 
+    fun recordSettingsChange(description: String) {
+        val existing = prefs.getString("settings_changes", "") ?: ""
+        val newEntry = "${System.currentTimeMillis()}|$description"
+        val updated = if (existing.isEmpty()) newEntry else "$existing||$newEntry"
+        prefs.edit().putString("settings_changes", updated).apply()
+    }
+
+    fun getSettingsChanges(): List<Pair<Long, String>> {
+        val raw = prefs.getString("settings_changes", "") ?: ""
+        if (raw.isEmpty()) return emptyList()
+        return raw.split("||").mapNotNull { entry ->
+            val parts = entry.split("|", limit = 2)
+            if (parts.size == 2) Pair(parts[0].toLongOrNull() ?: return@mapNotNull null, parts[1])
+            else null
+        }
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: BolusSettingsRepository? = null

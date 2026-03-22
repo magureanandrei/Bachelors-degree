@@ -62,6 +62,13 @@ fun LogEntryCard(
             || log.notes?.startsWith("Auto-detected") == true
             || log.notes == "Auto-entry via CareLink"
     val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
+    if (log.eventType == "SETTINGS_CHANGE") {
+        SettingsChangeDivider(
+            timestamp = log.timestamp,
+            description = log.notes
+        )
+        return
+    }
 
     Card(
         onClick = { isExpanded = !isExpanded },
