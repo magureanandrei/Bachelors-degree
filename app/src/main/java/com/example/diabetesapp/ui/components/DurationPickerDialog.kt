@@ -23,22 +23,60 @@ import androidx.compose.ui.viewinterop.AndroidView
 fun DurationPickerSheet(
     initialValue: Double,
     onDismiss: () -> Unit,
-    onConfirm: (Double) -> Unit
+    onConfirm: (Double) -> Unit,
+    title: String = "Duration of Action",
+    isBasal: Boolean = false
 ) {
-    // Calculate initial hours and minutes
-    val initialHours = initialValue.toInt().coerceIn(2, 8)
+    // Generate valid options based on insulin type
+    val hourOptions = if (isBasal) {
+        listOf(12, 20, 24, 36, 42, 48)
+    } else {
+        (2..8).toList()
+    }
+
+    val minuteOptions = if (isBasal) {
+        listOf("00")
+    } else {
+        listOf("00", "15", "30", "45")
+    }
+
+    // Calculate initial indices
+    val initialHours = initialValue.toInt()
+    var initialHourIndex = hourOptions.indexOfFirst { it == initialHours }
+    if (initialHourIndex == -1) {
+        // Fallback to nearest if exact match not found
+        initialHourIndex = hourOptions.indices.minByOrNull { kotlin.math.abs(hourOptions[it] - initialHours) } ?: 0
+    }
+
     val initialMinutesDecimal = initialValue - initialHours
-    val initialMinutesIndex = when {
+    val initialMinutesIndex = if (isBasal) 0 else when {
         initialMinutesDecimal < 0.125 -> 0  // 0 min
         initialMinutesDecimal < 0.375 -> 1  // 15 min
         initialMinutesDecimal < 0.625 -> 2  // 30 min
         else -> 3                            // 45 min
-    }.coerceIn(0, 3)
+    }.coerceIn(0, minuteOptions.size - 1)
 
-    var selectedHours by remember { mutableStateOf(initialHours) }
+    var selectedHourIndex by remember { mutableStateOf(initialHourIndex) }
     var selectedMinutesIndex by remember { mutableStateOf(initialMinutesIndex) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Helper to format NumberPicker safely and persistently
+    val formatPicker = { picker: NumberPicker ->
+        for (i in 0 until picker.childCount) {
+            val child = picker.getChildAt(i)
+            if (child is android.widget.EditText) {
+                child.setTextColor(android.graphics.Color.BLACK)
+                child.isFocusable = false
+                child.isCursorVisible = false
+                // Removed explicit textSize and typeface to match the rest of the wheel
+            }
+        }
+
+        // Scale the entire picker slightly to make all wheel items appear bigger
+        picker.scaleX = 1.25f
+        picker.scaleY = 1.25f
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -55,7 +93,7 @@ fun DurationPickerSheet(
         ) {
             // Title
             Text(
-                text = "Duration of Action",
+                text = title,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.Black,
@@ -84,53 +122,35 @@ fun DurationPickerSheet(
                 ) {
                     AndroidView(
                         factory = { context ->
-                            // Apply high-contrast theme for visible text
                             val themedContext = ContextThemeWrapper(context, android.R.style.Theme_Material_Light_Dialog)
 
                             NumberPicker(themedContext).apply {
-                                // Set range
-                                minValue = 2
-                                maxValue = 8
-                                value = initialHours
+                                val displayValuesStr = hourOptions.map { it.toString() }.toTypedArray()
+                                displayedValues = displayValuesStr
+                                minValue = 0
+                                maxValue = displayValuesStr.size - 1
+                                value = selectedHourIndex
 
-                                // Disable wrap and keyboard
                                 wrapSelectorWheel = false
                                 descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
 
-                                // Set listener
                                 setOnValueChangedListener { _, _, newVal ->
-                                    selectedHours = newVal
+                                    selectedHourIndex = newVal
+                                    formatPicker(this)
                                 }
 
-                                // Style text for maximum visibility
-                                postDelayed({
-                                    try {
-                                        // Access the selector wheel paint to make center text larger
-                                        val paintField = NumberPicker::class.java.getDeclaredField("mSelectorWheelPaint")
-                                        paintField.isAccessible = true
-                                        val paint = paintField.get(this) as android.graphics.Paint
-                                        paint.color = android.graphics.Color.BLACK
-                                        paint.textSize = 72f // Larger text for prominence
-                                        paint.isFakeBoldText = true // Make it bold
-                                    } catch (_: Exception) {}
-
-                                    for (i in 0 until childCount) {
-                                        val child = getChildAt(i)
-                                        if (child is android.widget.EditText) {
-                                            child.setTextColor(android.graphics.Color.BLACK)
-                                            child.textSize = 32f // Larger selected text
-                                            child.isFocusable = false
-                                            child.isCursorVisible = false
-                                            child.typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                        }
+                                setOnScrollListener { view, scrollState ->
+                                    if (scrollState == NumberPicker.OnScrollListener.SCROLL_STATE_IDLE) {
+                                        formatPicker(view)
                                     }
-                                    invalidate()
-                                }, 100)
+                                }
+
+                                postDelayed({ formatPicker(this) }, 100)
                             }
                         },
                         update = { picker ->
-                            if (picker.value != selectedHours) {
-                                picker.value = selectedHours
+                            if (picker.value != selectedHourIndex) {
+                                picker.value = selectedHourIndex
                             }
                         },
                         modifier = Modifier
@@ -153,50 +173,30 @@ fun DurationPickerSheet(
                 ) {
                     AndroidView(
                         factory = { context ->
-                            // Apply high-contrast theme for visible text
                             val themedContext = ContextThemeWrapper(context, android.R.style.Theme_Material_Light_Dialog)
 
                             NumberPicker(themedContext).apply {
-                                // CRITICAL: Set displayedValues BEFORE min/max
-                                val minuteValues = arrayOf("00", "15", "30", "45")
-                                displayedValues = minuteValues
+                                val minuteValuesArray = minuteOptions.toTypedArray()
+                                displayedValues = minuteValuesArray
                                 minValue = 0
-                                maxValue = 3
-                                value = initialMinutesIndex
+                                maxValue = minuteValuesArray.size - 1
+                                value = selectedMinutesIndex
 
-                                // Disable wrap and keyboard
                                 wrapSelectorWheel = false
                                 descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
 
-                                // Set listener
                                 setOnValueChangedListener { _, _, newVal ->
                                     selectedMinutesIndex = newVal
+                                    formatPicker(this)
                                 }
 
-                                // Style text for maximum visibility
-                                postDelayed({
-                                    try {
-                                        // Access the selector wheel paint to make center text larger
-                                        val paintField = NumberPicker::class.java.getDeclaredField("mSelectorWheelPaint")
-                                        paintField.isAccessible = true
-                                        val paint = paintField.get(this) as android.graphics.Paint
-                                        paint.color = android.graphics.Color.BLACK
-                                        paint.textSize = 72f // Larger text for prominence
-                                        paint.isFakeBoldText = true // Make it bold
-                                    } catch (_: Exception) {}
-
-                                    for (i in 0 until childCount) {
-                                        val child = getChildAt(i)
-                                        if (child is android.widget.EditText) {
-                                            child.setTextColor(android.graphics.Color.BLACK)
-                                            child.textSize = 32f // Larger selected text
-                                            child.isFocusable = false
-                                            child.isCursorVisible = false
-                                            child.typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                        }
+                                setOnScrollListener { view, scrollState ->
+                                    if (scrollState == NumberPicker.OnScrollListener.SCROLL_STATE_IDLE) {
+                                        formatPicker(view)
                                     }
-                                    invalidate()
-                                }, 100)
+                                }
+
+                                postDelayed({ formatPicker(this) }, 100)
                             }
                         },
                         update = { picker ->
@@ -222,9 +222,10 @@ fun DurationPickerSheet(
             // Confirm Button
             Button(
                 onClick = {
-                    // Calculate the final duration
-                    val minutesInHours = selectedMinutesIndex * 15 / 60.0
-                    val finalDuration = selectedHours + minutesInHours
+                    val hourVal = hourOptions[selectedHourIndex]
+                    val minuteStr = minuteOptions[selectedMinutesIndex]
+                    val minutesInHours = (minuteStr.toDoubleOrNull() ?: 0.0) / 60.0
+                    val finalDuration = hourVal + minutesInHours
                     onConfirm(finalDuration)
                 },
                 modifier = Modifier
@@ -255,17 +256,17 @@ fun DurationPickerDialog(
     currentValue: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
-    minHours: Double = 1.0,
-    maxHours: Double = 8.0
+    title: String = "Duration of Action",
+    isBasal: Boolean = false
 ) {
-    // Convert to new API
     val initialValue = currentValue.toDoubleOrNull() ?: 4.0
     DurationPickerSheet(
         initialValue = initialValue,
         onDismiss = onDismiss,
         onConfirm = { newValue ->
             onConfirm(newValue.toString())
-        }
+        },
+        title = title,
+        isBasal = isBasal
     )
 }
-
