@@ -28,7 +28,10 @@ data class BolusSettings(
 
     val maxBolus: Float = 15.0f,    // Hard cap on calculator recommendations
     val hypoLimit: Float = 70.0f,   // Low line for graph & hypo warnings
-    val hyperLimit: Float = 180.0f  // High line for graph
+    val hyperLimit: Float = 180.0f,  // High line for graph
+
+    val basalInsulinType: BasalInsulinType = BasalInsulinType.NONE,
+    val basalDurationHours: Float = 0f   // 0 = not set yet
 ) {
     // Computed properties for display
     val durationDisplay: String
@@ -41,9 +44,14 @@ data class BolusSettings(
     // Feature flags — use these everywhere instead of comparing therapyType strings directly
     val isPumpUser: Boolean get() = therapyType == "PUMP_STANDARD" || therapyType == "PUMP_AID"
     val isAidPump: Boolean get() = therapyType == "PUMP_AID"
-    val isManualInsulin: Boolean get() = !isPumpUser  // MDI only
-    val isCgmEnabled: Boolean get() = glucoseSource == "CGM"  // already exists, just rename to be consistent
+    val isManualInsulin: Boolean get() = !isPumpUser
+    val isCgmEnabled: Boolean get() = glucoseSource == "CGM"
     val therapyTypeEnum: TherapyType get() = TherapyType.fromString(therapyType)
+    val isMdi: Boolean get() = therapyType == "MDI"
+
+    // True only when MDI user has actually configured their basal insulin
+    val hasBasalConfigured: Boolean
+        get() = isMdi && basalInsulinType != BasalInsulinType.NONE && basalDurationHours > 0f
 
     /**
      * Get ICR value for a specific time segment

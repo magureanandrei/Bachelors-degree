@@ -3,6 +3,7 @@ package com.example.diabetesapp.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.diabetesapp.data.models.BasalInsulinType
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.InsulinType
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
@@ -35,7 +36,10 @@ data class DraftSettings(
 
     val maxBolus: String = "15.0",
     val hypoLimit: String = "70",
-    val hyperLimit: String = "180"
+    val hyperLimit: String = "180",
+
+    val basalInsulinType: BasalInsulinType = BasalInsulinType.NONE,
+    val basalDurationHours: String = ""   // Empty = not set; user must type
 )
 
 data class BolusSettingsUiState(
@@ -59,6 +63,8 @@ data class BolusSettingsUiState(
     val isfEveningError: String? = null,
     val isfNightError: String? = null,
 
+    val basalDurationError: String? = null,
+
     // Save feedback
     val saveMessage: String? = null,
     val isSaving: Boolean = false
@@ -70,7 +76,9 @@ enum class ExpandableCard {
     ISF,
     TARGET_BG,
 
-    SAFETY_LIMITS
+    SAFETY_LIMITS,
+
+    BASAL_INSULIN
 }
 
 enum class FieldType {
@@ -85,7 +93,9 @@ enum class FieldType {
     ISF_MORNING,
     ISF_NOON,
     ISF_EVENING,
-    ISF_NIGHT
+    ISF_NIGHT,
+
+    BASAL_DURATION
 }
 
 class BolusSettingsViewModel(
@@ -117,7 +127,10 @@ class BolusSettingsViewModel(
                             isfNight = persistedSettings.isfNight.toInt().toString(),
                             maxBolus = persistedSettings.maxBolus.toString(),
                             hypoLimit = persistedSettings.hypoLimit.toInt().toString(),
-                            hyperLimit = persistedSettings.hyperLimit.toInt().toString()
+                            hyperLimit = persistedSettings.hyperLimit.toInt().toString(),
+                            basalInsulinType = persistedSettings.basalInsulinType,
+                            basalDurationHours = if (persistedSettings.basalDurationHours > 0f)
+                                persistedSettings.basalDurationHours.toInt().toString() else ""
                         ),
                         icrTimeDependent = !persistedSettings.hasUniformIcr,
                         isfTimeDependent = !persistedSettings.hasUniformIsf
@@ -317,40 +330,6 @@ class BolusSettingsViewModel(
     fun isCardExpanded(card: ExpandableCard): Boolean {
         return _uiState.value.expandedCard == card
     }
-
-    /**
-     * Check if all fields are valid (for enabling/disabling Save button)
-     */
-    fun areAllFieldsValid(): Boolean {
-        val state = _uiState.value
-
-        // Check required fields
-        if (state.durationError != null || state.targetBGError != null) {
-            return false
-        }
-
-        // Check ICR fields
-        if (!state.icrTimeDependent) {
-            if (state.icrGlobalError != null) return false
-        } else {
-            if (state.icrMorningError != null || state.icrNoonError != null ||
-                state.icrEveningError != null || state.icrNightError != null) {
-                return false
-            }
-        }
-
-        // Check ISF fields
-        if (!state.isfTimeDependent) {
-            if (state.isfGlobalError != null) return false
-        } else {
-            if (state.isfMorningError != null || state.isfNoonError != null ||
-                state.isfEveningError != null || state.isfNightError != null) {
-                return false
-            }
-        }
-
-        return true
-    }
     fun updateMaxBolus(value: String) {
         val currentDraft = _uiState.value.draftSettings
         _uiState.value = _uiState.value.copy(draftSettings = currentDraft.copy(maxBolus = value))
@@ -364,6 +343,18 @@ class BolusSettingsViewModel(
         _uiState.value = _uiState.value.copy(draftSettings = currentDraft.copy(hyperLimit = value))
     }
 
+    fun updateBasalInsulinType(type: BasalInsulinType) {
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value =
+            _uiState.value.copy(draftSettings = currentDraft.copy(basalInsulinType = type))
+    }
+
+    fun updateBasalDurationHours(value: String) {
+        val currentDraft = _uiState.value.draftSettings
+        _uiState.value =
+            _uiState.value.copy(draftSettings = currentDraft.copy(basalDurationHours = value))
+    }
+
     /**
      * Live validation - validates a single field as user types
      */
@@ -375,6 +366,7 @@ class BolusSettingsViewModel(
             FieldType.ICR_EVENING, FieldType.ICR_NIGHT -> ValidationUtils.validateICR(value)
             FieldType.ISF_GLOBAL, FieldType.ISF_MORNING, FieldType.ISF_NOON,
             FieldType.ISF_EVENING, FieldType.ISF_NIGHT -> ValidationUtils.validateISF(value)
+            FieldType.BASAL_DURATION -> validateBasalDuration(value)
         }
 
         // Update the appropriate error state
@@ -391,7 +383,41 @@ class BolusSettingsViewModel(
             FieldType.ISF_NOON -> _uiState.value.copy(isfNoonError = if (result.isValid) null else result.errorMessage)
             FieldType.ISF_EVENING -> _uiState.value.copy(isfEveningError = if (result.isValid) null else result.errorMessage)
             FieldType.ISF_NIGHT -> _uiState.value.copy(isfNightError = if (result.isValid) null else result.errorMessage)
+            FieldType.BASAL_DURATION -> _uiState.value.copy(basalDurationError = if (result.isValid) null else result.errorMessage)
         }
+    }
+
+    /**
+     * Basal duration validation:
+     * - Empty is OK (field is optional — user may not have filled it yet)
+     * - If filled, must be a number between 8 and 72 hours
+     */
+    private fun validateBasalDuration(value: String): ValidationUtils.ValidationResult {
+        if (value.isBlank()) return ValidationUtils.ValidationResult.success()
+        val num = value.toFloatOrNull()
+            ?: return ValidationUtils.ValidationResult.error("Enter a valid number")
+        if (num < 8f) return ValidationUtils.ValidationResult.error("Must be at least 8 hours")
+        if (num > 72f) return ValidationUtils.ValidationResult.error("Must be 72 hours or less")
+        return ValidationUtils.ValidationResult.success()
+    }
+
+    fun areAllFieldsValid(): Boolean {
+        val state = _uiState.value
+        if (state.durationError != null || state.targetBGError != null) return false
+        if (!state.icrTimeDependent) {
+            if (state.icrGlobalError != null) return false
+        } else {
+            if (listOf(state.icrMorningError, state.icrNoonError,
+                    state.icrEveningError, state.icrNightError).any { it != null }) return false
+        }
+        if (!state.isfTimeDependent) {
+            if (state.isfGlobalError != null) return false
+        } else {
+            if (listOf(state.isfMorningError, state.isfNoonError,
+                    state.isfEveningError, state.isfNightError).any { it != null }) return false
+        }
+        if (state.basalDurationError != null) return false
+        return true
     }
 
     /**
@@ -411,6 +437,7 @@ class BolusSettingsViewModel(
             "isfNoon" -> _uiState.value.copy(isfNoonError = null)
             "isfEvening" -> _uiState.value.copy(isfEveningError = null)
             "isfNight" -> _uiState.value.copy(isfNightError = null)
+            "basalDuration" -> _uiState.value.copy(basalDurationError = null)
             else -> _uiState.value
         }
     }
@@ -465,6 +492,11 @@ class BolusSettingsViewModel(
                 draft.maxBolus.toFloatOrNull()?.let { repository.updateMaxBolus(it) }
                 draft.hypoLimit.toFloatOrNull()?.let { repository.updateHypoLimit(it) }
                 draft.hyperLimit.toFloatOrNull()?.let { repository.updateHyperLimit(it) }
+
+                repository.updateBasalInsulinType(draft.basalInsulinType)
+                draft.basalDurationHours.toFloatOrNull()?.let {
+                    repository.updateBasalDurationHours(it)
+                }
 
                 android.util.Log.d("BolusSettings", "=== Settings Saved Successfully ===")
                 android.util.Log.d("BolusSettings", "Duration: ${draft.durationOfAction} hours")

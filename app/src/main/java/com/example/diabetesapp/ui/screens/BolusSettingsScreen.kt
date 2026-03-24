@@ -11,7 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.diabetesapp.data.models.BasalInsulinType
 import com.example.diabetesapp.data.models.InsulinType
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.DurationPickerSheet
@@ -56,6 +57,7 @@ fun BolusSettingsScreen(
 
     // State for duration picker dialog
     var showDurationPicker by remember { mutableStateOf(false) }
+    var showBasalDurationPicker by remember { mutableStateOf(false) }
 
     // Snackbar for validation messages
     val snackbarHostState = remember { SnackbarHostState() }
@@ -138,7 +140,7 @@ fun BolusSettingsScreen(
                 ) {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = Color(0xFF00897B)
                         )
@@ -194,7 +196,7 @@ fun BolusSettingsScreen(
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = insulinTypeExpanded) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .menuAnchor(),
+                                    .menuAnchor(MenuAnchorType.PrimaryEditable),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color(0xFF00897B),
                                     unfocusedBorderColor = Color(0xFFE0E0E0)
@@ -206,7 +208,14 @@ fun BolusSettingsScreen(
                             ) {
                                 InsulinType.entries.forEach { type ->
                                     DropdownMenuItem(
-                                        text = { Text(type.displayName) },
+                                        text = {
+                                            Column {
+                                                Text(type.displayName, fontSize = 14.sp)
+                                                if (type.hint.isNotEmpty()) {
+                                                    Text(type.hint, fontSize = 11.sp, color = Color.Gray)
+                                                }
+                                            }
+                                        },
                                         onClick = {
                                             viewModel.updateInsulinType(type)
                                             insulinTypeExpanded = false
@@ -293,6 +302,123 @@ fun BolusSettingsScreen(
                                 showDurationPicker = false
                             }
                         )
+                    }
+
+                    if (uiState.persistedSettings.isMdi) {
+                        // Basal insulin type dropdown
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        var typeExpanded by remember { mutableStateOf(false) }
+                        Text("Basal Insulin Type", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.Gray)
+                        ExposedDropdownMenuBox(expanded = typeExpanded, onExpandedChange = { typeExpanded = it }) {
+                            OutlinedTextField(
+                                value = draftSettings.basalInsulinType.displayName, // Fixed here
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
+                                modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryEditable),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFF00897B),
+                                    unfocusedBorderColor = Color(0xFFE0E0E0)
+                                )
+                            )
+                            ExposedDropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
+                                BasalInsulinType.entries.forEach { type ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(type.displayName, fontSize = 14.sp)
+                                                if (type.hint.isNotEmpty()) {
+                                                    Text(type.hint, fontSize = 11.sp, color = Color.Gray)
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            viewModel.updateBasalInsulinType(type) // Fixed here
+                                            typeExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Duration field
+                        Text("Duration of Action", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.Gray)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showBasalDurationPicker = true }
+                        ) {
+                            OutlinedTextField(
+                                value = if (draftSettings.basalDurationHours.isNotEmpty()) FormatUtils.formatDurationDisplay(draftSettings.basalDurationHours) else "",
+                                onValueChange = { /* Read Only */ },
+                                readOnly = true,
+                                placeholder = { Text("Tap to select") },
+                                trailingIcon = {
+                                    IconButton(onClick = { showBasalDurationPicker = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Schedule,
+                                            contentDescription = "Pick duration",
+                                            tint = Color(0xFF00897B)
+                                        )
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFF00897B),
+                                    unfocusedBorderColor = Color(0xFFE0E0E0),
+                                    errorBorderColor = Color.Red,
+                                    disabledTextColor = Color.Black,
+                                    disabledBorderColor = Color(0xFFE0E0E0),
+                                    disabledLabelColor = Color.Gray
+                                ),
+                                supportingText = {
+                                    if (uiState.basalDurationError != null) {
+                                        Text(uiState.basalDurationError!!, color = Color.Red, fontSize = 12.sp)
+                                    } else {
+                                        val hint = "How many hours your long lasting insulin stays active"
+                                        Text(hint, fontSize = 10.sp, color = Color.Gray)
+                                    }
+                                },
+                                isError = uiState.basalDurationError != null
+                            )
+                        }
+
+                        if (showBasalDurationPicker) {
+                            DurationPickerSheet(
+                                initialValue = draftSettings.basalDurationHours.toDoubleOrNull() ?: draftSettings.basalInsulinType.typicalDurationHours.toDouble(),
+                                onDismiss = { showBasalDurationPicker = false },
+                                onConfirm = { selectedDuration ->
+                                    val formattedValue = FormatUtils.formatDoubleForUi(selectedDuration)
+                                    viewModel.updateBasalDurationHours(formattedValue)
+                                    showBasalDurationPicker = false
+                                },
+                                title = "Duration of Long-Acting Insulin",
+                                isBasal = true
+                            )
+                        }
+
+                        // Unconfigured nudge
+                        val notConfigured = draftSettings.basalInsulinType == BasalInsulinType.NONE || draftSettings.basalDurationHours.isEmpty()
+                        if (notConfigured) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    "⚠ Configure your basal insulin for better algorithm accuracy.",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFE65100),
+                                    modifier = Modifier.padding(10.dp),
+                                    lineHeight = 17.sp
+                                )
+                            }
+                        }
                     }
                 }
 

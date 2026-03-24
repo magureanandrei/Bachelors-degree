@@ -2,6 +2,7 @@ package com.example.diabetesapp.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.diabetesapp.data.models.BasalInsulinType
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.InsulinType
 import kotlinx.coroutines.channels.awaitClose
@@ -54,7 +55,12 @@ class BolusSettingsRepository(context: Context) {
             isfMorning = prefs.getFloat("isf_morning", 50f),
             isfNoon = prefs.getFloat("isf_noon", 50f),
             isfEvening = prefs.getFloat("isf_evening", 50f),
-            isfNight = prefs.getFloat("isf_night", 50f)
+            isfNight = prefs.getFloat("isf_night", 50f),
+            basalInsulinType = BasalInsulinType.fromName(
+                prefs.getString("basal_insulin_type", BasalInsulinType.NONE.name)
+                    ?: BasalInsulinType.NONE.name
+            ),
+            basalDurationHours = prefs.getFloat("basal_duration_hours", 0f)
         )
     }
 
@@ -79,6 +85,9 @@ class BolusSettingsRepository(context: Context) {
             putFloat("isf_noon", settings.isfNoon)
             putFloat("isf_evening", settings.isfEvening)
             putFloat("isf_night", settings.isfNight)
+
+            putString("basal_insulin_type", settings.basalInsulinType.name)
+            putFloat("basal_duration_hours", settings.basalDurationHours)
 
             apply()
         }
@@ -109,6 +118,12 @@ class BolusSettingsRepository(context: Context) {
     fun updateMaxBolus(value: Float) = updateField { it.copy(maxBolus = value) }
     fun updateHypoLimit(value: Float) = updateField { it.copy(hypoLimit = value) }
     fun updateHyperLimit(value: Float) = updateField { it.copy(hyperLimit = value) }
+
+    fun updateBasalInsulinType(type: BasalInsulinType) =
+        updateField { it.copy(basalInsulinType = type) }
+
+    fun updateBasalDurationHours(hours: Float) =
+        updateField { it.copy(basalDurationHours = hours) }
 
     fun recordSettingsChange(description: String) {
         val existing = prefs.getString("settings_changes", "") ?: ""
