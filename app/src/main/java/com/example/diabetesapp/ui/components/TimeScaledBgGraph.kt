@@ -1,18 +1,21 @@
 package com.example.diabetesapp.ui.components
-
+// ...existing code...
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -26,16 +29,19 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.utils.CgmReading
+import com.example.diabetesapp.utils.GraphMode
 
 @Composable
 fun TimeScaledBgGraph(
@@ -46,9 +52,10 @@ fun TimeScaledBgGraph(
     targetBg: Float = 100f,
     hypoLimit: Float = 70f,
     hyperLimit: Float = 180f,
-    isCgmEnabled: Boolean,
+    graphMode: GraphMode,
     settings: BolusSettings,
     hypoPrediction: HypoPrediction? = null,
+    graphHeightDp: Dp = 200.dp,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -72,6 +79,16 @@ fun TimeScaledBgGraph(
     val rangeBg = maxBg - minBg
     val topPadding = 0f
     val bottomPadding = 120f
+
+    val manualBgLogs = remember(logs, graphMode) {
+        if (graphMode != GraphMode.MANUAL) emptyList()
+        else logs.filter {
+            it.bloodGlucose > 0
+                    && it.notes != "Auto-entry via CareLink"
+                    && !it.notes.startsWith("Auto-imported")
+                    && !it.notes.startsWith("Auto-detected")
+        }.sortedBy { it.timestamp }
+    }
 
     Row(modifier = modifier) {
         // --- FIXED Y-AXIS ---
@@ -312,15 +329,8 @@ fun TimeScaledBgGraph(
                 }
 
                 // 6. MANUAL BG DOTS
-                if (!isCgmEnabled) {
-                    val bgLogs = logs.filter {
-                        it.bloodGlucose > 0
-                                && it.notes != "Auto-entry via CareLink"
-                                && it.notes?.startsWith("Auto-imported") != true
-                                && it.notes?.startsWith("Auto-detected") != true
-                    }.sortedBy { it.timestamp }
-
-                    bgLogs.forEach { log ->
+                if (graphMode == GraphMode.MANUAL) {
+                    manualBgLogs.forEach { log ->
                         val x = timeToX(log.timestamp)
                         val y = bgToY(log.bloodGlucose.toFloat().coerceIn(minBg, maxBg))
                         val bg = log.bloodGlucose.toFloat()
@@ -329,17 +339,39 @@ fun TimeScaledBgGraph(
                             bg < hypoLimit -> Color(0xFFE53935)
                             else -> Color(0xFF00897B)
                         }
-                        drawCircle(color = Color.White, radius = 10f, center = Offset(x, y))
-                        drawCircle(color = dotColor, radius = 8f, center = Offset(x, y))
-                        drawText(
-                            textMeasurer = textMeasurer,
-                            text = log.bloodGlucose.toInt().toString(),
+                        // Bigger square instead of circle
+                        val squareSize = 20f
+                        drawRect(
+                            color = Color.White,
+                            topLeft = Offset(x - squareSize / 2, y - squareSize / 2),
+                            size = Size(squareSize, squareSize)
+                        )
+                        drawRect(
+                            color = dotColor,
+                            topLeft = Offset(x - squareSize / 2, y - squareSize / 2),
+                            size = Size(squareSize, squareSize),
+                            style = Stroke(width = 3f)
+                        )
+                        drawRect(
+                            color = dotColor.copy(alpha = 0.15f),
+                            topLeft = Offset(x - squareSize / 2, y - squareSize / 2),
+                            size = Size(squareSize, squareSize)
+                        )
+                        val bgText = log.bloodGlucose.toInt().toString()
+                        val textLayout = textMeasurer.measure(
+                            bgText,
                             style = TextStyle(
                                 color = dotColor,
-                                fontSize = 9.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
-                            ),
-                            topLeft = Offset(x - 10f, y - 24f)
+                            )
+                        )
+                        drawText(
+                            textLayoutResult = textLayout,
+                            topLeft = Offset(
+                                x - textLayout.size.width / 2f,  // horizontally centered on square
+                                y - squareSize / 2f - textLayout.size.height - 4f  // just above the square
+                            )
                         )
                     }
                 }

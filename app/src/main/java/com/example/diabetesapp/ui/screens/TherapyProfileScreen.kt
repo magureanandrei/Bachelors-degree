@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.diabetesapp.data.database.BolusDatabase
+import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.viewmodel.TherapyProfileViewModel
 import com.example.diabetesapp.viewmodel.TherapyProfileViewModelFactory
@@ -33,7 +35,9 @@ fun TherapyProfileScreen(
 ) {
     val context = LocalContext.current
     val repository = remember { BolusSettingsRepository.getInstance(context) }
-    val viewModel: TherapyProfileViewModel = viewModel(factory = TherapyProfileViewModelFactory(repository))
+    val database = remember { BolusDatabase.getDatabase(context) }
+    val logRepository = remember { BolusLogRepository(database.bolusLogDao()) }
+    val viewModel: TherapyProfileViewModel = viewModel(factory = TherapyProfileViewModelFactory(repository,logRepository))
     val uiState by viewModel.uiState.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }

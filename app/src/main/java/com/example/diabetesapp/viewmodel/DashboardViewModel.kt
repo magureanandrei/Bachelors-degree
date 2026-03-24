@@ -12,29 +12,29 @@ import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.CgmTrend
 import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.data.models.PatientContext
-import com.example.diabetesapp.data.models.TherapyType
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
 import com.example.diabetesapp.utils.CgmReading
+import com.example.diabetesapp.utils.DateTimeUtils
+import com.example.diabetesapp.utils.GraphDataBuilder
 import com.example.diabetesapp.utils.HealthConnectHelper
 import com.example.diabetesapp.utils.HypoPredictionCalculator
 import com.example.diabetesapp.utils.IobCalculator
 import com.example.diabetesapp.utils.IobResult
+import com.example.diabetesapp.utils.WorkoutProcessor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
-import java.time.temporal.ChronoUnit
-import java.util.Calendar
 
 class DashboardViewModel(
     private val repository: BolusLogRepository,
@@ -88,16 +88,16 @@ class DashboardViewModel(
     // depending on a changing StateFlow which caused recomposition cascades
     val todaysTreatments: StateFlow<List<BolusLog>> = _graphEvents
         .map { events ->
-            val dayStart = get24hStartTimestamp()
+            val dayStart = DateTimeUtils.get24hStartTimestamp()
             events.filter { it.timestamp >= dayStart && (it.carbs > 0 || it.administeredDose >= 1.5f) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         viewModelScope.launch {
             allLogs.collect { logs ->
-                val dayStart = get24hStartTimestamp()
-                val todayLocal = logs.filter { it.timestamp >= dayStart }
-                rebuildGraphEvents(
+                val dayStart = DateTimeUtils.get24hStartTimestamp()
+                val todayLocal = GraphDataBuilder.filterForDay(allLogs.value, dayStart)
+                _graphEvents.value = GraphDataBuilder.buildGraphEvents(
                     localLogs = todayLocal,
                     xdripTreatments = _xdripTreatmentsCache.value,
                     hcWorkouts = _hcWorkoutLogs.value
@@ -107,61 +107,34 @@ class DashboardViewModel(
         }
     }
 
-    private fun rebuildGraphEvents(
-        localLogs: List<BolusLog>,
-        xdripTreatments: List<BolusLog>,
-        hcWorkouts: List<BolusLog>
-    ) {
-        val combined = (localLogs + xdripTreatments + hcWorkouts)
-            .distinctBy { it.timestamp }
-            .sortedBy { it.timestamp }
-        Log.d("DashboardVM", "Graph events: ${combined.size} total (${localLogs.size} local + ${xdripTreatments.size} xDrip + ${hcWorkouts.size} HC workouts)")
-        _graphEvents.value = combined
-    }
+    private var iobJob: Job? = null
 
     fun recalculateIob() {
-        viewModelScope.launch(Dispatchers.IO) {
+        iobJob?.cancel()
+        iobJob = viewModelScope.launch(Dispatchers.IO) {
             val logs = allLogs.value
             val currentSettings = settings.value
-            val latestReading = _latestReading.value  // capture current value
+            val latestReading = _latestReading.value
             val xdripIob = latestReading?.iob
-            val xdripTimestamp = latestReading?.timestamp  // pass timestamp too
+            val xdripTimestamp = latestReading?.timestamp
             val result = IobCalculator.calculate(logs, currentSettings, xdripIob, xdripTimestamp)
             withContext(Dispatchers.Main) {
                 _iobResult.value = result
             }
         }
     }
+
     private fun calculateHypoPrediction(readings: List<CgmReading>, hypoLimit: Float) {
+        if (!settings.value.isCgmEnabled) return
         _hypoPrediction.value = HypoPredictionCalculator.calculate(readings, hypoLimit)
     }
 
     fun fetchHistoryData() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val isCgmEnabled = settings.value.isCgmEnabled
-                val isAidPump = settings.value.isAidPump
-                val hcWorkouts = _hcWorkoutLogs.value
-
-                if (isCgmEnabled && isAidPump) {
-                    // AID pump + CGM: include CareLink treatments
-                    val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
-                    val history = CgmHelper.getBgHistoryFromXDrip()
-                    val xdripWithBg = xdripTreatments.map {
-                        it.copy(bloodGlucose = findClosestBg(it.timestamp, history))
-                    }
-                    withContext(Dispatchers.Main) {
-                        _historyEvents.value = (allLogs.value + xdripWithBg + hcWorkouts)
-                            .distinctBy { it.timestamp }
-                            .sortedByDescending { it.timestamp }
-                    }
-                } else {
-                    // Everyone else: local logs + HC workouts only
-                    withContext(Dispatchers.Main) {
-                        _historyEvents.value = (allLogs.value + hcWorkouts)
-                            .distinctBy { it.timestamp }
-                            .sortedByDescending { it.timestamp }
-                    }
+                when {
+                    settings.value.isAidPump && settings.value.isCgmEnabled -> fetchAidCgmHistory()
+                    else -> fetchStandardHistory()
                 }
             } catch (e: Exception) {
                 Log.e("DashboardVM", "History fetch failed", e)
@@ -169,67 +142,35 @@ class DashboardViewModel(
         }
     }
 
+    private suspend fun fetchAidCgmHistory() {
+        val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
+        val history = CgmHelper.getBgHistoryFromXDrip()
+        val xdripWithBg = xdripTreatments.map {
+            it.copy(bloodGlucose = CgmHelper.findClosestBg(it.timestamp, history))
+        }
+        withContext(Dispatchers.Main) {
+            _historyEvents.value = (allLogs.value + xdripWithBg + _hcWorkoutLogs.value)
+                .distinctBy { it.timestamp }
+                .sortedByDescending { it.timestamp }
+        }
+    }
+
+    private suspend fun fetchStandardHistory() {
+        withContext(Dispatchers.Main) {
+            _historyEvents.value = (allLogs.value + _hcWorkoutLogs.value)
+                .distinctBy { it.timestamp }
+                .sortedByDescending { it.timestamp }
+        }
+    }
+
     fun fetchDashboardData() {
         fetchRecentWorkouts()
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val isCgmEnabled = settings.value.isCgmEnabled
-                val isAidPump = settings.value.isAidPump
-                val dayStart = get24hStartTimestamp()
-
-                if (isCgmEnabled) {
-                    val latest = CgmHelper.getLatestBgFromXDrip()
-                    val history = CgmHelper.getBgHistoryFromXDrip()
-
-                    // CareLink only for AID pump
-                    val todayXDrip = if (isAidPump) {
-                        val xdripTreatments = CgmHelper.getTreatmentsFromXDrip()
-                        xdripTreatments
-                            .filter { it.timestamp >= dayStart }
-                            .map { treatment ->
-                                treatment.copy(
-                                    bloodGlucose = findClosestBg(treatment.timestamp, history)
-                                )
-                            }
-                    } else {
-                        emptyList()
-                    }
-
-                    _xdripTreatmentsCache.value = todayXDrip
-
-                    // Persist xDrip treatments that have a matched BG and aren't already in DB
-                    val existingLogs = allLogs.value
-                    todayXDrip.forEach { treatment ->
-                        val alreadySaved = existingLogs.any { existing ->
-                            Math.abs(existing.timestamp - treatment.timestamp) <= 2 * 60 * 1000L
-                                    && existing.notes == "Auto-entry via CareLink"
-                        }
-                        if (!alreadySaved && treatment.bloodGlucose > 0) {
-                            repository.insert(treatment)
-                        }
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        _latestReading.value = latest
-                        recalculateIob()
-                        _cgmReadings.value = history
-                        calculateHypoPrediction(history, settings.value.hypoLimit)
-                        val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
-                        rebuildGraphEvents(
-                            localLogs = localLogs,
-                            xdripTreatments = todayXDrip,
-                            hcWorkouts = _hcWorkoutLogs.value
-                        )
-                    }
-                } else {
-                    val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
-                    withContext(Dispatchers.Main) {
-                        rebuildGraphEvents(
-                            localLogs = localLogs,
-                            xdripTreatments = emptyList(),
-                            hcWorkouts = _hcWorkoutLogs.value
-                        )
-                    }
+                when {
+                    settings.value.isAidPump && settings.value.isCgmEnabled -> fetchAidCgmMode()
+                    settings.value.isCgmEnabled -> fetchCgmOnlyMode()
+                    else -> fetchManualMode()
                 }
             } catch (e: Exception) {
                 Log.e("DashboardVM", "Fetch failed", e)
@@ -237,25 +178,68 @@ class DashboardViewModel(
         }
     }
 
-    private fun findClosestBg(timestamp: Long, cgmReadings: List<CgmReading>): Double {
-        val windowMs = 10 * 60 * 1000L
-        return cgmReadings
-            .filter { Math.abs(it.timestamp - timestamp) <= windowMs }
-            .minByOrNull { Math.abs(it.timestamp - timestamp) }
-            ?.bgValue?.toDouble() ?: 0.0
+    private suspend fun fetchAidCgmMode() {
+        val dayStart = DateTimeUtils.get24hStartTimestamp()
+        val latest = CgmHelper.getLatestBgFromXDrip()
+        val history = CgmHelper.getBgHistoryFromXDrip()
+        val todayXDrip = CgmHelper.getTreatmentsFromXDrip()
+            .filter { it.timestamp >= dayStart }
+            .map { it.copy(bloodGlucose = CgmHelper.findClosestBg(it.timestamp, history)) }
+
+        _xdripTreatmentsCache.value = todayXDrip
+        persistCareLinkTreatments(todayXDrip)
+
+        withContext(Dispatchers.Main) {
+            if (latest != null) _latestReading.value = latest  // only update if we got a fresh reading
+            _cgmReadings.value = history
+            calculateHypoPrediction(history, settings.value.hypoLimit)
+            recalculateIob()  // always call — uses stale timestamp from last known reading
+            _graphEvents.value = GraphDataBuilder.buildGraphEvents(
+                localLogs = GraphDataBuilder.filterForDay(allLogs.value, dayStart),
+                xdripTreatments = todayXDrip,
+                hcWorkouts = _hcWorkoutLogs.value
+            )
+        }
     }
 
-    fun getLogicalDayStartTimestamp(): Long {
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        return calendar.timeInMillis
+    private suspend fun fetchCgmOnlyMode() {
+        val dayStart = DateTimeUtils.get24hStartTimestamp()
+        val latest = CgmHelper.getLatestBgFromXDrip()
+        val history = CgmHelper.getBgHistoryFromXDrip()
+
+        withContext(Dispatchers.Main) {
+            if (latest != null) _latestReading.value = latest  // same fix here
+            _cgmReadings.value = history
+            calculateHypoPrediction(history, settings.value.hypoLimit)
+            recalculateIob()
+            _graphEvents.value = GraphDataBuilder.buildGraphEvents(
+                localLogs = GraphDataBuilder.filterForDay(allLogs.value, dayStart),
+                hcWorkouts = _hcWorkoutLogs.value
+            )
+        }
     }
 
-    fun get24hStartTimestamp(): Long =
-        System.currentTimeMillis() - 25 * 60 * 60 * 1000L
+    private fun fetchManualMode() {
+        val dayStart = DateTimeUtils.get24hStartTimestamp()
+        val localLogs = GraphDataBuilder.filterForDay(allLogs.value, dayStart)
+        _graphEvents.value = GraphDataBuilder.buildGraphEvents(
+            localLogs = localLogs,
+            hcWorkouts = _hcWorkoutLogs.value
+        )
+    }
+
+    private suspend fun persistCareLinkTreatments(treatments: List<BolusLog>) {
+        val existingLogs = allLogs.value
+        treatments.forEach { treatment ->
+            val alreadySaved = existingLogs.any { existing ->
+                Math.abs(existing.timestamp - treatment.timestamp) <= 2 * 60 * 1000L
+                        && existing.notes == "Auto-entry via CareLink"
+            }
+            if (!alreadySaved && treatment.bloodGlucose > 0) {
+                repository.insert(treatment)
+            }
+        }
+    }
 
     fun fetchRecentWorkouts() {
         val helper = healthConnectHelper ?: return
@@ -264,132 +248,22 @@ class DashboardViewModel(
             val steps = stepRecords.sumOf { it.count }
             val detectedWalks = helper.detectWalkingFromSteps(stepRecords)
             val records = helper.getRecentWorkouts()
+            val dayStart = DateTimeUtils.get24hStartTimestamp()
 
-            Log.d("HC_Steps", "Today's steps: $steps")
-
-            val dayStart = get24hStartTimestamp()
-
-            // All ExerciseSessionRecords come from Strava — drop Walking types
-            val stravaActivities = records.mapNotNull { record ->
-                val startMs = record.startTime.toEpochMilli()
-                if (startMs < dayStart) return@mapNotNull null
-
-                val durationMinutes = ChronoUnit.MINUTES.between(
-                    record.startTime, record.endTime
-                ).toFloat()
-
-                val sportType = when (record.exerciseType) {
-                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> return@mapNotNull null
-                    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "Running"
-                    ExerciseSessionRecord.EXERCISE_TYPE_BIKING -> "Cycling"
-                    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,
-                    ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "Swimming"
-                    else -> "Workout"
-                }
-
-                val avgHr = helper.getAverageHeartRateForSession(record.startTime, record.endTime)
-                val intensity = when {
-                    avgHr == null -> "Medium"
-                    avgHr >= 160  -> "High"
-                    avgHr >= 130  -> "Medium"
-                    else          -> "Low"
-                }
-
-                Log.d("HC_Workouts", "$sportType: avgHR=${avgHr?.toInt()}, intensity=$intensity")
-
-                BolusLog(
-                    id = 0,
-                    timestamp = startMs,
-                    eventType = "SPORT",
-                    status = "COMPLETED",
-                    bloodGlucose = 0.0,
-                    carbs = 0.0,
-                    standardDose = 0.0,
-                    suggestedDose = 0.0,
-                    administeredDose = 0.0,
-                    isSportModeActive = true,
-                    sportType = sportType,
-                    sportIntensity = intensity,
-                    sportDuration = durationMinutes,
-                    notes = "Auto-imported from Strava",
-                    clinicalSuggestion = null
-                )
-            }
-
-            val todayWalks = detectedWalks.filter { it.timestamp >= dayStart }
-
-            // Suppress step-detected walks that are >50% overlapped by a Strava activity
-            val filteredWalks = todayWalks.filter { walk ->
-                val walkStart = walk.timestamp
-                val walkEnd = walkStart + (walk.sportDuration!! * 60 * 1000L).toLong()
-                val walkDuration = walkEnd - walkStart
-                stravaActivities.none { activity ->
-                    val actStart = activity.timestamp
-                    val actEnd = actStart + (activity.sportDuration!! * 60 * 1000L).toLong()
-                    val overlapStart = maxOf(walkStart, actStart)
-                    val overlapEnd = minOf(walkEnd, actEnd)
-                    val overlapMs = (overlapEnd - overlapStart).coerceAtLeast(0L)
-                    overlapMs > walkDuration * 0.5
-                }
-            }
-
-            // Merge walks that are within 15 minutes of each other into one session
-            val mergedWalks = mutableListOf<BolusLog>()
-            val sortedWalks = filteredWalks.sortedBy { it.timestamp }
-
-            sortedWalks.forEach { walk ->
-                val last = mergedWalks.lastOrNull()
-                if (last != null) {
-                    val lastEnd = last.timestamp + (last.sportDuration!! * 60 * 1000L).toLong()
-                    val gapMs = walk.timestamp - lastEnd
-                    if (gapMs <= 15 * 60 * 1000L && last.sportType == walk.sportType) {
-                        // Merge into the last walk — extend its duration
-                        val newDuration = ((walk.timestamp + (walk.sportDuration!! * 60 * 1000L).toLong()
-                                - last.timestamp) / 60000f)
-                        mergedWalks[mergedWalks.lastIndex] = last.copy(sportDuration = newDuration)
-                    } else {
-                        mergedWalks.add(walk)
-                    }
-                } else {
-                    mergedWalks.add(walk)
-                }
-            }
-
-            val allWorkouts = (stravaActivities + mergedWalks).sortedBy { it.timestamp }
-
-            // Persist any new activities that aren't already in the DB
-            val existingLogs = allLogs.value
-            allWorkouts.forEach { workout ->
-                if (workout.sportType == "Walking" && workout.notes.startsWith("Auto-detected")) {
-                    // Remove any existing walk entries that fall within this merged walk's time window
-                    val workoutEnd = workout.timestamp + (workout.sportDuration!! * 60 * 1000L).toLong()
-                    existingLogs.filter { existing ->
-                        existing.isSportModeActive &&
-                                existing.sportType == "Walking" &&
-                                existing.timestamp >= workout.timestamp - 60 * 1000L &&
-                                existing.timestamp <= workoutEnd
-                    }.forEach { duplicate ->
-                        repository.delete(duplicate)
-                    }
-                    repository.insert(workout)
-                } else {
-                    val alreadySaved = existingLogs.any { existing ->
-                        existing.isSportModeActive &&
-                                Math.abs(existing.timestamp - workout.timestamp) <= 2 * 60 * 1000L &&
-                                existing.sportType == workout.sportType
-                    }
-                    if (!alreadySaved) {
-                        repository.insert(workout)
-                    }
-                }
-            }
+            val allWorkouts = WorkoutProcessor.process(records, detectedWalks, helper, dayStart)
+            WorkoutProcessor.persistNew(
+                allWorkouts = allWorkouts,
+                existingLogs = allLogs.value,
+                repository = repository,
+                stepRecords = stepRecords
+            )
 
             withContext(Dispatchers.Main) {
                 _recentWorkouts.value = records
                 _dailySteps.value = steps
                 _hcWorkoutLogs.value = allWorkouts
-                val localLogs = allLogs.value.filter { it.timestamp >= dayStart }
-                rebuildGraphEvents(
+                val localLogs = GraphDataBuilder.filterForDay(allLogs.value, dayStart)
+                _graphEvents.value = GraphDataBuilder.buildGraphEvents(
                     localLogs = localLogs,
                     xdripTreatments = _xdripTreatmentsCache.value,
                     hcWorkouts = allWorkouts
@@ -399,12 +273,7 @@ class DashboardViewModel(
     }
 
     fun checkForPendingWorkouts(logs: List<BolusLog>) {
-        val now = System.currentTimeMillis()
-        val pending = logs.firstOrNull { log ->
-            log.status == "PLANNED" && log.isSportModeActive &&
-                    (log.timestamp + ((log.sportDuration ?: 0f) * 60 * 1000L)) < now
-        }
-        unverifiedWorkout.value = pending
+        unverifiedWorkout.value = WorkoutProcessor.checkForPendingWorkout(logs)
     }
 
     fun dismissVerification() {
@@ -430,7 +299,7 @@ class DashboardViewModel(
             bolusSettings = currentSettings,
             currentBG = log.bloodGlucose,
             hasCGM = currentSettings.isCgmEnabled,
-            cgmTrend = CgmTrend.NONE, // post-workout, no live trend needed
+            cgmTrend = CgmTrend.NONE,
             activeInsulinIOB = log.administeredDose,
             plannedCarbs = log.carbs,
             isDoingSport = true,
@@ -442,28 +311,13 @@ class DashboardViewModel(
             dailySteps = 0L
         )
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)
-        val newInsight = "Post-Workout Insight: ${decision.clinicalRationale}"
-        val combinedInsight = if (log.clinicalSuggestion.isNullOrBlank()) newInsight
-        else "${log.clinicalSuggestion}\n\n$newInsight"
-
-        val calendar = Calendar.getInstance().apply { timeInMillis = log.timestamp }
-        try {
-            val parts = actualStartTimeStr.split(":")
-            if (parts.size == 2) {
-                calendar.set(Calendar.HOUR_OF_DAY, parts[0].toInt())
-                calendar.set(Calendar.MINUTE, parts[1].toInt())
-            }
-        } catch (_: Exception) { }
-
-        val updatedLog = log.copy(
-            timestamp = calendar.timeInMillis,
-            status = "COMPLETED",
-            sportDuration = actualDuration,
-            sportIntensity = when (actualIntensity.toInt()) {
-                1 -> "Low"; 2 -> "Medium"; 3 -> "High"; else -> "Medium"
-            },
+        val updatedLog = WorkoutProcessor.buildVerifiedLog(
+            log = log,
+            actualDuration = actualDuration,
+            actualIntensity = actualIntensity,
             sportType = sportType,
-            clinicalSuggestion = combinedInsight
+            actualStartTimeStr = actualStartTimeStr,
+            clinicalRationale = "Post-Workout Insight: ${decision.clinicalRationale}"
         )
         viewModelScope.launch {
             repository.update(updatedLog)

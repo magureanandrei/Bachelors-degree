@@ -38,7 +38,13 @@ import com.example.diabetesapp.ui.components.DashboardActionButtons
 import com.example.diabetesapp.ui.components.IobWidget
 import com.example.diabetesapp.ui.components.LogDetailsDialog
 import com.example.diabetesapp.ui.components.PostWorkoutVerificationDialog
+import com.example.diabetesapp.ui.components.SettingsChangeDivider
 import com.example.diabetesapp.ui.components.TimeScaledBgGraph
+import com.example.diabetesapp.utils.CgmReading
+import com.example.diabetesapp.utils.DateTimeUtils
+import com.example.diabetesapp.utils.GraphDataBuilder
+import com.example.diabetesapp.utils.GraphDataBuilder.mergeSettingsChanges
+import com.example.diabetesapp.utils.GraphMode
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import kotlinx.coroutines.isActive
@@ -63,7 +69,7 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsState()
 
     // Re-calculate day start when logs change
-    val logicalDayStart = remember { viewModel.get24hStartTimestamp() }
+    val logicalDayStart = remember { DateTimeUtils.get24hStartTimestamp() }
     val graphEndTimestamp = remember { System.currentTimeMillis() + (2.5 * 60 * 60 * 1000L).toLong() }
     val todaysLogs by viewModel.graphEvents.collectAsState()
     val unverifiedWorkout by viewModel.unverifiedWorkout.collectAsState()
@@ -141,6 +147,22 @@ fun HomeScreen(
     // Fetch the history when the logical day changes (or screen opens)
     val isCgmEnabled = settings.isCgmEnabled
     val latestReading by viewModel.latestReading.collectAsState()
+    val latestManualBg = remember(todaysLogs) {
+        todaysLogs.filter { it.bloodGlucose > 0 }
+            .maxByOrNull { it.timestamp }
+    }
+
+    val widgetReading = if (isCgmEnabled) {
+        latestReading
+    } else {
+        latestManualBg?.let {
+            CgmReading(
+                timestamp = it.timestamp,
+                bgValue = it.bloodGlucose.toInt(),
+                trendString = ""
+            )
+        }
+    }
 
     // --- The 5-Minute Polling Engine ---
     LaunchedEffect(Unit) {
@@ -173,24 +195,21 @@ fun HomeScreen(
             Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
                 Text("Glucose Monitoring", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
 
-                // 1. Give the widget some breathing room at the top of the card
-                if (isCgmEnabled) {
-                    CurrentBgWidget(
-                        latestReading = latestReading,
-                        isCgmEnabled = true,
-                        hypoLimit = settings.hypoLimit,
-                        hyperLimit = settings.hyperLimit,
-                        modifier = Modifier.fillMaxWidth() // No extra padding needed here, Column handles it
-                    )
-                } else {
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
+                CurrentBgWidget(
+                    latestReading = widgetReading,
+                    isCgmEnabled = isCgmEnabled,
+                    hypoLimit = settings.hypoLimit,
+                    hyperLimit = settings.hyperLimit,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 HorizontalDivider(
                     color = Color(0xFFF0F0F0),
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
                 IobWidget(
                     iobResult = iobResult,
+                    therapyType = settings.therapyTypeEnum,
                     modifier = Modifier.padding(horizontal = 2.dp)
                 )
                 HorizontalDivider(
@@ -198,46 +217,61 @@ fun HomeScreen(
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
 
-                // 2. The Graph now has its own clean space
-                key(settings.targetBG, settings.hypoLimit, settings.hyperLimit) {
-                    Box(modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)) {
+                val graphMode = GraphDataBuilder.resolveGraphMode(
+                    isCgmEnabled = settings.isCgmEnabled,
+                    isAidPump = settings.isAidPump
+                )
+
+                // Conditionally pass data based on mode
+                val graphCgmReadings = if (graphMode != GraphMode.MANUAL) cgmReadings else emptyList()
+                val graphHypoPrediction = if (graphMode != GraphMode.MANUAL) hypoPrediction else null
+
+                key(settings.targetBG, settings.hypoLimit, settings.hyperLimit, graphMode) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                    ) {
                         TimeScaledBgGraph(
                             logs = graphEvents,
-                            cgmReadings = cgmReadings,
+                            cgmReadings = graphCgmReadings,
                             dayStartTimestamp = logicalDayStart,
                             endTimestamp = graphEndTimestamp,
                             targetBg = settings.targetBG,
                             hypoLimit = settings.hypoLimit,
                             hyperLimit = settings.hyperLimit,
-                            isCgmEnabled = isCgmEnabled,
-                            settings=settings,
-                            hypoPrediction = hypoPrediction,
+                            graphMode = graphMode,
+                            settings = settings,
+                            hypoPrediction = graphHypoPrediction,
+                            graphHeightDp = 200.dp,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
-                hypoPrediction?.let { prediction ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = Color(0xFFE53935),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "Expected low in ~${prediction.minutesUntilHypo} min",
-                            fontSize = 12.sp,
-                            color = Color(0xFFE53935),
-                            fontWeight = FontWeight.Bold
-                        )
+
+                // Hypo prediction warning — only for CGM modes
+                if (graphMode != GraphMode.MANUAL) {
+                    hypoPrediction?.let { prediction ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFE53935),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Expected low in ~${prediction.minutesUntilHypo} min",
+                                fontSize = 12.sp,
+                                color = Color(0xFFE53935),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -256,11 +290,18 @@ fun HomeScreen(
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                todaysLogs.reversed().forEach { log ->
-                    CompactLogEntryCard(log = log,
-                        hypoLimit = settings.hypoLimit,
-                        hyperLimit = settings.hyperLimit) {
-                        selectedLogForModal = log
+                todaysLogs.reversed().mergeSettingsChanges().forEach { log ->
+                    if (log.eventType == "SETTINGS_CHANGE") {
+                        SettingsChangeDivider(
+                            timestamp = log.timestamp,
+                            description = log.notes
+                        )
+                    } else {
+                        CompactLogEntryCard(
+                            log = log,
+                            hypoLimit = settings.hypoLimit,
+                            hyperLimit = settings.hyperLimit
+                        ) { selectedLogForModal = log }
                     }
                 }
             }

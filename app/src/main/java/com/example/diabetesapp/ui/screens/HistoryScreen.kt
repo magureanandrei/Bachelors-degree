@@ -17,6 +17,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
+import com.example.diabetesapp.ui.components.SettingsChangeDivider
+import com.example.diabetesapp.utils.GraphDataBuilder.mergeSettingsChanges
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import java.text.SimpleDateFormat
@@ -85,9 +87,22 @@ fun HistoryScreen(
                             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                         )
                     }
-                    items(dailyLogs) { log ->
-                        LogEntryCard(log = log, onDelete = { viewModel.deleteLog(log) },
-                            hypoLimit = settings.hypoLimit, hyperLimit = settings.hyperLimit)
+                    dailyLogs.mergeSettingsChanges().forEach { log ->
+                        item {
+                            if (log.eventType == "SETTINGS_CHANGE") {
+                                SettingsChangeDivider(
+                                    timestamp = log.timestamp,
+                                    description = log.notes
+                                )
+                            } else {
+                                LogEntryCard(
+                                    log = log,
+                                    onDelete = { viewModel.deleteLog(log) },
+                                    hypoLimit = settings.hypoLimit,
+                                    hyperLimit = settings.hyperLimit
+                                )
+                            }
+                        }
                     }
                 }
             }

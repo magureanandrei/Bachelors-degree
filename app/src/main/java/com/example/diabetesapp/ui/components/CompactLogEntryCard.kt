@@ -46,6 +46,7 @@ fun CompactLogEntryCard(
             || log.notes?.startsWith("Auto-imported") == true
             || log.notes?.startsWith("Auto-detected") == true
     val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
+    if (log.eventType == "SETTINGS_CHANGE") return
 
     Card(
         onClick = onClick,
@@ -88,6 +89,8 @@ fun CompactLogEntryCard(
                     log.carbs > 0 && log.administeredDose >= 0.0 -> Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
                     log.administeredDose > 0 -> Icon(Icons.Default.Vaccines, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
                     else -> Icon(Icons.Default.Bloodtype, null, tint = Color(0xFFD32F2F), modifier = Modifier.size(16.dp))
+
+
                 }
                 // Auto-entry sync badge
                 if (isAutoEntry) {
