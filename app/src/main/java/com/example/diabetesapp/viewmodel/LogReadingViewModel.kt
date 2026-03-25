@@ -46,7 +46,8 @@ data class LogReadingState(
     val errorMessage: String? = null,
     val pendingClinicalSuggestion: String? = null,
     val bgFetchStatus: BgFetchStatus = BgFetchStatus.IDLE,
-    val showAidPenWarning: Boolean = false
+    val showAidPenWarning: Boolean = false,
+    val basalInsulin : String = ""
 )
 
 class LogReadingViewModel(
@@ -99,6 +100,9 @@ class LogReadingViewModel(
                 fetchBgForTimestamp(timestamp)
             }
         }
+    }
+    fun updateBasalInsulin(value: String) {
+        _uiState.value = _uiState.value.copy(basalInsulin = value, errorMessage = null)
     }
 
     fun fetchBgForTimestamp(timestamp: Long) {
@@ -211,7 +215,9 @@ class LogReadingViewModel(
         val carbs = state.carbs.toDoubleOrNull() ?: 0.0
         val insulin = state.manualInsulin.toDoubleOrNull() ?: 0.0
 
-        if (bg == 0.0 && carbs == 0.0 && insulin == 0.0 && !state.isSportModeActive) {
+        if (bg == 0.0 && carbs == 0.0 && insulin == 0.0 && !state.isSportModeActive && (state.basalInsulin.toDoubleOrNull()
+                ?: 0.0) == 0.0
+        ) {
             _uiState.value = _uiState.value.copy(errorMessage = "Please enter data or switch to Sport Mode.")
             return
         }
@@ -313,6 +319,29 @@ class LogReadingViewModel(
                         clinicalSuggestion = state.pendingClinicalSuggestion
                     )
                 )
+
+                // After the existing non-sport repository.insert() call:
+                val basalDose = state.basalInsulin.toDoubleOrNull() ?: 0.0
+                if (basalDose > 0) {
+                    repository.insert(
+                        BolusLog(
+                            timestamp = timestamp,
+                            eventType = "BASAL_INSULIN",
+                            status = "COMPLETED",
+                            bloodGlucose = 0.0,
+                            carbs = 0.0,
+                            standardDose = basalDose,
+                            suggestedDose = 0.0,
+                            administeredDose = basalDose,
+                            isSportModeActive = false,
+                            sportType = null,
+                            sportIntensity = null,
+                            sportDuration = null,
+                            notes = state.notes.ifBlank { "Long-acting insulin" },
+                            clinicalSuggestion = null
+                        )
+                    )
+                }
             }
 
             resetState()

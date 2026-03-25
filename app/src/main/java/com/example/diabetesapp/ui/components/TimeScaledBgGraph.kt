@@ -42,6 +42,7 @@ import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.HypoPrediction
 import com.example.diabetesapp.utils.CgmReading
 import com.example.diabetesapp.utils.GraphMode
+import com.example.diabetesapp.utils.InsulinEventJoiner
 
 @Composable
 fun TimeScaledBgGraph(
@@ -64,6 +65,8 @@ fun TimeScaledBgGraph(
     val bolusPainter = rememberVectorPainter(Icons.Default.AutoFixHigh)
     val mealPainter = rememberVectorPainter(Icons.Default.Restaurant)
     val manualInsulinPainter = rememberVectorPainter(Icons.Default.Vaccines)
+    val basalPainter = rememberVectorPainter(Icons.Default.Vaccines) // or use a distinct icon
+
 
     LaunchedEffect(scrollState.maxValue) {
         val totalWindowMs = (endTimestamp - dayStartTimestamp).toFloat()
@@ -88,6 +91,15 @@ fun TimeScaledBgGraph(
                     && !it.notes.startsWith("Auto-imported")
                     && !it.notes.startsWith("Auto-detected")
         }.sortedBy { it.timestamp }
+    }
+
+    val (bolusEvents, basalEvents) = remember(logs) {
+        InsulinEventJoiner.splitForGraph(logs)
+    }
+
+    val allSwimlaneEvents = remember(bolusEvents, basalEvents, dayStartTimestamp, endTimestamp) {
+        (bolusEvents + basalEvents)
+            .filter { it.timestamp in dayStartTimestamp..endTimestamp }
     }
 
     Row(modifier = modifier) {
@@ -375,10 +387,9 @@ fun TimeScaledBgGraph(
                         )
                     }
                 }
-
                 // 7. SWIMLANE ICONS
-                val dayEndTimestamp = dayStartTimestamp + windowMs.toLong()
-                logs.filter { it.timestamp in dayStartTimestamp..dayEndTimestamp }.forEach { log ->
+
+                allSwimlaneEvents.forEach { log ->
                     val x = timeToX(log.timestamp)
                     val iconRadius = 16f
 
@@ -394,11 +405,16 @@ fun TimeScaledBgGraph(
                         }
                     }
 
-                    if (log.carbs > 0) drawSwimlaneIcon(carbsY, mealPainter, Color(0xFFE91E63))
-                    if (log.administeredDose > 0 || log.eventType == "SMART_BOLUS") {
-                        val tint = if (log.eventType == "SMART_BOLUS") Color(0xFFFF9800) else Color(0xFF1976D2)
-                        val painter = if (log.eventType == "SMART_BOLUS") bolusPainter else manualInsulinPainter
-                        drawSwimlaneIcon(insulinY, painter, tint)
+                    if (log.eventType == "BASAL_INSULIN") {
+                        // Long-acting: draw in green on insulin swimlane
+                        drawSwimlaneIcon(insulinY, basalPainter, Color(0xFF2E7D32))
+                    } else {
+                        if (log.carbs > 0) drawSwimlaneIcon(carbsY, mealPainter, Color(0xFFE91E63))
+                        if (log.administeredDose > 0 || log.eventType == "SMART_BOLUS") {
+                            val tint = if (log.eventType == "SMART_BOLUS") Color(0xFFFF9800) else Color(0xFF1976D2)
+                            val painter = if (log.eventType == "SMART_BOLUS") bolusPainter else manualInsulinPainter
+                            drawSwimlaneIcon(insulinY, painter, tint)
+                        }
                     }
                 }
             }

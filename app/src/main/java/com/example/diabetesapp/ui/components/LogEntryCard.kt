@@ -81,6 +81,8 @@ fun LogEntryCard(
                 isWalk -> Color(0xFFF5F7F8)
                 log.eventType == "SPORT" && log.status?.uppercase() == "PLANNED" -> Color(0xFFFFF3E0) // Optional: Light orange background for pending
                 log.eventType == "SPORT" && !isWalk -> Color(0xFF4DB6AC) // <-- YOUR DARK TEAL BACKGROUND HERE
+                // In the CardDefaults.cardColors containerColor when block, add:
+                log.eventType == "BASAL_INSULIN" -> Color(0xFFE8F5E9) // light green
                 isAutoEntry -> Color(0xFFE0F2F1)
                 else -> Color.White
             }
@@ -145,6 +147,21 @@ fun LogEntryCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isWalk) "Walk" else "Sport Event", fontSize = 12.sp, color = sportColor, fontWeight = FontWeight.Bold)
                         }
+                        "BASAL_INSULIN" -> {
+                            Icon(
+                                Icons.Default.Vaccines,
+                                null,
+                                modifier = Modifier.size(14.dp),
+                                tint = Color(0xFF2E7D32)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Long-Acting Insulin",
+                                fontSize = 12.sp,
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -193,7 +210,6 @@ fun LogEntryCard(
                     }
                 }
             } else {
-                // STANDARD DIABETES LAYOUT (BG, Carbs, Insulin)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -215,27 +231,31 @@ fun LogEntryCard(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (log.administeredDose > 0) {
-                            if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
-                                Text(
-                                    "${String.format(Locale.US, "%.1f", log.suggestedDose)}U ",
-                                    color = Color(0xFF81C784),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                        if (log.eventType == "BASAL_INSULIN" && log.administeredDose > 0) {
                             Text(
                                 "${String.format(Locale.US, "%.1f", log.administeredDose)} U",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32)
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32)
                             )
-                            Icon(
-                                Icons.Default.Vaccines,
-                                contentDescription = null,
-                                tint = Color(0xFF2E7D32),
-                                modifier = Modifier.padding(start = 4.dp).size(14.dp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "basal",
+                                fontSize = 10.sp,
+                                color = Color(0xFF2E7D32).copy(alpha = 0.7f),
+                                modifier = Modifier
+                                    .background(Color(0xFFE8F5E9), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
                             )
+                            Icon(Icons.Default.Vaccines, contentDescription = null,
+                                tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(14.dp))
+                        } else if (log.administeredDose > 0) {
+                            if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
+                                Text("${String.format(Locale.US, "%.1f", log.suggestedDose)}U ",
+                                    color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U",
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                            Icon(Icons.Default.Vaccines, contentDescription = null,
+                                tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(14.dp))
                         }
                     }
                 }

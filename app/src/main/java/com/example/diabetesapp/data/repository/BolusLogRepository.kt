@@ -31,4 +31,7 @@ class BolusLogRepository(private val bolusLogDao: BolusLogDao) {
 
     suspend fun getLogsNearTimestamp(timestamp: Long, windowMs: Long): List<BolusLog> =
         bolusLogDao.getLogsNearTimestamp(timestamp, windowMs)
+
+    suspend fun getBasalLogsSince(since: Long): List<BolusLog> =
+        bolusLogDao.getBasalLogsSince(since)
 }

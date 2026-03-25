@@ -89,7 +89,7 @@ class DashboardViewModel(
     val todaysTreatments: StateFlow<List<BolusLog>> = _graphEvents
         .map { events ->
             val dayStart = DateTimeUtils.get24hStartTimestamp()
-            events.filter { it.timestamp >= dayStart && (it.carbs > 0 || it.administeredDose >= 1.5f) }
+            events.filter { it.timestamp >= dayStart && (it.carbs > 0 || it.administeredDose >= 1.5f || it.eventType == "BASAL_INSULIN") }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -150,7 +150,7 @@ class DashboardViewModel(
         }
         withContext(Dispatchers.Main) {
             _historyEvents.value = (allLogs.value + xdripWithBg + _hcWorkoutLogs.value)
-                .distinctBy { it.timestamp }
+                .distinctBy { "${it.timestamp}_${it.eventType}" }
                 .sortedByDescending { it.timestamp }
         }
     }
@@ -158,7 +158,7 @@ class DashboardViewModel(
     private suspend fun fetchStandardHistory() {
         withContext(Dispatchers.Main) {
             _historyEvents.value = (allLogs.value + _hcWorkoutLogs.value)
-                .distinctBy { it.timestamp }
+                .distinctBy { "${it.timestamp}_${it.eventType}" }
                 .sortedByDescending { it.timestamp }
         }
     }

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -324,6 +325,43 @@ fun LogReadingScreen(
                                 unit = "U",
                                 placeholder = "0.0"
                             )
+                            if (settings.isMdi) {
+                                LargeInputField(
+                                    label = "Basal Dose (${settings.basalInsulinType.displayName})",
+                                    value = uiState.basalInsulin,
+                                    onValueChange = { viewModel.updateBasalInsulin(it) },
+                                    unit = "U",
+                                    placeholder = "0.0"
+                                )
+                                // Warning if basal not configured yet
+                                if (!settings.hasBasalConfigured) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Info,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFF9800),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                "Configure your basal insulin in Settings for better tracking.",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFFE65100),
+                                                lineHeight = 15.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

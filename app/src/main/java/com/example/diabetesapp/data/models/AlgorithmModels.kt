@@ -69,7 +69,10 @@ data class PatientContext(
     val isExtremeHeat: Boolean = false,
 
     // 5. Passive Activity Context (from Health Connect)
-    val dailySteps: Long = 0L
+    val dailySteps: Long = 0L,
+    val basalDoseToday: Double = 0.0,      // total long-acting units injected today
+    val basalDurationHours: Float = 0f,    // duration of their long-acting insulin
+    val hasBasalConfigured: Boolean = false // total long-acting units injected today (MDI only)
 )
 
 // --- THE OUTPUT: What the algorithm gives back to the UI ---

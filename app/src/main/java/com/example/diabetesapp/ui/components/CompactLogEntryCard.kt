@@ -3,6 +3,7 @@ package com.example.diabetesapp.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -59,6 +60,8 @@ fun CompactLogEntryCard(
                 isWalk -> Color(0xFFECEFF1)
                 log.eventType == "SPORT" && log.status?.uppercase() == "PLANNED" -> Color(0xFFFFF3E0)
                 log.eventType == "SPORT" && !isWalk -> Color(0xFF4DB6AC) // <-- DARK TEAL BACKGROUND HERE
+                // In the CardDefaults.cardColors containerColor when block, add:
+                log.eventType == "BASAL_INSULIN" -> Color(0xFFE8F5E9) // light green
                 isAutoEntry -> Color(0xFFE0F2F1)
                 else -> Color.White
             }
@@ -86,6 +89,12 @@ fun CompactLogEntryCard(
                         modifier = Modifier.size(16.dp)
                     )
                     log.eventType == "SMART_BOLUS" -> Icon(Icons.Default.AutoFixHigh, null, tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
+                    log.eventType == "BASAL_INSULIN" -> Icon(
+                        Icons.Default.Vaccines,
+                        null,
+                        tint = Color(0xFF2E7D32), // dark green = long-acting
+                        modifier = Modifier.size(16.dp)
+                    )
                     log.carbs > 0 && log.administeredDose >= 0.0 -> Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
                     log.administeredDose > 0 -> Icon(Icons.Default.Vaccines, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
                     else -> Icon(Icons.Default.Bloodtype, null, tint = Color(0xFFD32F2F), modifier = Modifier.size(16.dp))
@@ -157,11 +166,30 @@ fun CompactLogEntryCard(
                 }
 
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
-                    if (log.administeredDose > 0) {
-                        Text("${String.format(Locale.US, "%.1f", log.administeredDose)}U",
-                            fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                            color = if (isAutoEntry) Color(0xFF00897B) else Color(0xFF2E7D32))
-                    } else { Text("-", color = Color.LightGray) }
+                    if (log.eventType == "BASAL_INSULIN") {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "${String.format(Locale.US, "%.1f", log.administeredDose)}U",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
+                            )
+                            Text(
+                                "basal",
+                                fontSize = 9.sp,
+                                color = Color(0xFF2E7D32).copy(alpha = 0.7f)
+                            )
+                        }
+                    } else if (log.administeredDose > 0) {
+                        Text(
+                            "${String.format(Locale.US, "%.1f", log.administeredDose)}U",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isAutoEntry) Color(0xFF00897B) else Color(0xFF2E7D32)
+                        )
+                    } else {
+                        Text("-", color = Color.LightGray)
+                    }
                 }
             }
         }

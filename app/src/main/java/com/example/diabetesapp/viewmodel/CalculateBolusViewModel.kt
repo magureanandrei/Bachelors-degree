@@ -285,7 +285,10 @@ class CalculateBolusViewModel(
             isIllness = state.selectedFactor == "Illness",
             isExtremeHeat = state.selectedFactor == "Heat",
             timeOfDay = LocalTime.now(),
-            dailySteps = 0L
+            dailySteps = 0L,
+            basalDoseToday = 0.0,  // TODO: sum from DB in future iteration
+            basalDurationHours = currentSettings.basalDurationHours,
+            hasBasalConfigured = currentSettings.hasBasalConfigured
         )
 
         val decision = AlgorithmEngine.calculateClinicalAdvice(context)

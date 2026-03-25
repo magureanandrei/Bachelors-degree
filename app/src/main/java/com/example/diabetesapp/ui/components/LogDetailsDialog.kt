@@ -34,7 +34,20 @@ fun LogDetailsDialog(log: BolusLog, onDismiss: () -> Unit) {
 
                 HorizontalDivider()
 
-                if (log.eventType == "SPORT") {
+                if (log.eventType == "BASAL_INSULIN") {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Type:", color = Color.Gray)
+                        Text("Long-Acting (Basal)", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Dose:", color = Color.Gray)
+                        Text(
+                            "${String.format(Locale.US, "%.1f", log.administeredDose)} U",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32)
+                        )
+                    }
+                } else if (log.eventType == "SPORT") {
                     // --- SPORT ONLY MODAL DETAILS ---
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Sport Type:", color = Color.Gray)

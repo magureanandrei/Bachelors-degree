@@ -23,7 +23,7 @@ object GraphDataBuilder {
         hcWorkouts: List<BolusLog> = emptyList()
     ): List<BolusLog> {
         val combined = (localLogs + xdripTreatments + hcWorkouts)
-            .distinctBy { it.timestamp }
+            .distinctBy { "${it.timestamp}_${it.eventType}" }
             .sortedBy { it.timestamp }
         Log.d("GraphDataBuilder", "Graph events: ${combined.size} total " +
                 "(${localLogs.size} local + ${xdripTreatments.size} xDrip + ${hcWorkouts.size} HC workouts)")
@@ -47,4 +47,7 @@ object GraphDataBuilder {
         }
         return result
     }
+
+    fun splitBasalFromBolus(events: List<BolusLog>): Pair<List<BolusLog>, List<BolusLog>> =
+        InsulinEventJoiner.splitForGraph(events)
 }

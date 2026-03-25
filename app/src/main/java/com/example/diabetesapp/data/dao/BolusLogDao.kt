@@ -32,5 +32,11 @@ interface BolusLogDao {
     @Query("SELECT * FROM bolus_log WHERE ABS(timestamp - :timestamp) <= :windowMs ORDER BY ABS(timestamp - :timestamp) ASC")
     suspend fun getLogsNearTimestamp(timestamp: Long, windowMs: Long): List<BolusLog>
 
+    @Query("SELECT * FROM bolus_log WHERE eventType = 'BASAL_INSULIN' ORDER BY timestamp DESC")
+    fun getBasalLogs(): Flow<List<BolusLog>>
+
+    @Query("SELECT * FROM bolus_log WHERE eventType = 'BASAL_INSULIN' AND timestamp >= :since ORDER BY timestamp DESC")
+    suspend fun getBasalLogsSince(since: Long): List<BolusLog>
+
 }
 
