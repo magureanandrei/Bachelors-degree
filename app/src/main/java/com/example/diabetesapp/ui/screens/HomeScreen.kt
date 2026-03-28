@@ -45,6 +45,7 @@ import com.example.diabetesapp.utils.DateTimeUtils
 import com.example.diabetesapp.utils.GraphDataBuilder
 import com.example.diabetesapp.utils.GraphDataBuilder.mergeSettingsChanges
 import com.example.diabetesapp.utils.GraphMode
+import com.example.diabetesapp.utils.InsulinEventJoiner
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import kotlinx.coroutines.isActive
@@ -185,14 +186,25 @@ fun HomeScreen(
         // ... Header, Disclaimer, and Action Buttons stay the same ...
         HeaderSection()
         DisclaimerBanner()
-        DashboardActionButtons(onSmartBolusClick = onNavigateToCalculateBolus, onManualLogClick = onNavigateToLogReading, settings = settings)
+        DashboardActionButtons(
+            onSmartBolusClick = onNavigateToCalculateBolus,
+            onManualLogClick = onNavigateToLogReading,
+            settings = settings
+        )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
+            Column(
+                modifier = Modifier.padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 12.dp,
+                    bottom = 8.dp
+                )
+            ) {
                 Text("Glucose Monitoring", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
 
                 CurrentBgWidget(
@@ -223,8 +235,10 @@ fun HomeScreen(
                 )
 
                 // Conditionally pass data based on mode
-                val graphCgmReadings = if (graphMode != GraphMode.MANUAL) cgmReadings else emptyList()
-                val graphHypoPrediction = if (graphMode != GraphMode.MANUAL) hypoPrediction else null
+                val graphCgmReadings =
+                    if (graphMode != GraphMode.MANUAL) cgmReadings else emptyList()
+                val graphHypoPrediction =
+                    if (graphMode != GraphMode.MANUAL) hypoPrediction else null
 
                 key(settings.targetBG, settings.hypoLimit, settings.hyperLimit, graphMode) {
                     Box(
@@ -289,19 +303,46 @@ fun HomeScreen(
                 Text("No entries in the last 24 hours.", color = Color.Gray)
             }
         } else {
+            // Compute joined events once
+            val joinedEvents = remember(todaysLogs) {
+                InsulinEventJoiner.joinForHistory(todaysLogs)
+            }
+
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // We still need SETTINGS_CHANGE dividers, so we work from the original
+                // reversed+merged list for those, but use joinedEvents for actual log cards
+                val settingsChanges = todaysLogs.reversed().mergeSettingsChanges()
+                    .filter { it.eventType == "SETTINGS_CHANGE" }
+
+                // Build the display list: joinedEvents reversed, with SETTINGS_CHANGE
+                // dividers inserted at the right positions
+                val basalIds = joinedEvents
+                    .filter { !it.isBasalOnly && it.associatedBasal != null }
+                    .map { it.associatedBasal!!.id }
+                    .toSet()
+
                 todaysLogs.reversed().mergeSettingsChanges().forEach { log ->
-                    if (log.eventType == "SETTINGS_CHANGE") {
-                        SettingsChangeDivider(
-                            timestamp = log.timestamp,
-                            description = log.notes
-                        )
-                    } else {
-                        CompactLogEntryCard(
-                            log = log,
-                            hypoLimit = settings.hypoLimit,
-                            hyperLimit = settings.hyperLimit
-                        ) { selectedLogForModal = log }
+                    when {
+                        log.eventType == "SETTINGS_CHANGE" -> {
+                            SettingsChangeDivider(
+                                timestamp = log.timestamp,
+                                description = log.notes
+                            )
+                        }
+                        // Skip standalone basal logs that got merged into a bolus card
+                        log.eventType == "BASAL_INSULIN" && log.id in basalIds -> {
+                            // consumed by its bolus card, don't render separately
+                        }
+
+                        else -> {
+                            val joined = joinedEvents.find { it.primaryLog.id == log.id }
+                            CompactLogEntryCard(
+                                log = log,
+                                hypoLimit = settings.hypoLimit,
+                                hyperLimit = settings.hyperLimit,
+                                associatedBasal = joined?.associatedBasal
+                            ) { selectedLogForModal = log }
+                        }
                     }
                 }
             }
@@ -311,7 +352,16 @@ fun HomeScreen(
 
     // --- MODALS ---
     selectedLogForModal?.let { log ->
-        LogDetailsDialog(log = log, onDismiss = { selectedLogForModal = null })
+        // Find the joined event for this log
+        val joined = remember(todaysLogs) {
+            InsulinEventJoiner.joinForHistory(todaysLogs)
+        }.find { it.primaryLog.id == log.id }
+
+        LogDetailsDialog(
+            log = log,
+            associatedBasal = joined?.associatedBasal,
+            onDismiss = { selectedLogForModal = null }
+        )
     }
 
     unverifiedWorkout?.let { workout ->

@@ -19,6 +19,7 @@ import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.SettingsChangeDivider
 import com.example.diabetesapp.utils.GraphDataBuilder.mergeSettingsChanges
+import com.example.diabetesapp.utils.InsulinEventJoiner
 import com.example.diabetesapp.viewmodel.DashboardViewModel
 import com.example.diabetesapp.viewmodel.DashboardViewModelFactory
 import java.text.SimpleDateFormat
@@ -87,20 +88,40 @@ fun HistoryScreen(
                             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                         )
                     }
+
+                    // Compute joined events for this day's logs
+                    val joinedEvents = InsulinEventJoiner.joinForHistory(dailyLogs)
+                    val basalIds = joinedEvents
+                        .filter { !it.isBasalOnly && it.associatedBasal != null }
+                        .map { it.associatedBasal!!.id }
+                        .toSet()
+
                     dailyLogs.mergeSettingsChanges().forEach { log ->
                         item {
-                            if (log.eventType == "SETTINGS_CHANGE") {
-                                SettingsChangeDivider(
-                                    timestamp = log.timestamp,
-                                    description = log.notes
-                                )
-                            } else {
-                                LogEntryCard(
-                                    log = log,
-                                    onDelete = { viewModel.deleteLog(log) },
-                                    hypoLimit = settings.hypoLimit,
-                                    hyperLimit = settings.hyperLimit
-                                )
+                            when {
+                                log.eventType == "SETTINGS_CHANGE" -> {
+                                    SettingsChangeDivider(
+                                        timestamp = log.timestamp,
+                                        description = log.notes
+                                    )
+                                }
+                                // Skip basal logs absorbed into a bolus card
+                                log.eventType == "BASAL_INSULIN" && log.id in basalIds -> {
+                                    // consumed by its bolus card
+                                }
+                                else -> {
+                                    val joined = joinedEvents.find { it.primaryLog.id == log.id }
+                                    LogEntryCard(
+                                        log = log,
+                                        hypoLimit = settings.hypoLimit,
+                                        hyperLimit = settings.hyperLimit,
+                                        associatedBasal = joined?.associatedBasal,
+                                        onDelete = { viewModel.deleteLog(log) },
+                                        onDeleteBasal = joined?.associatedBasal?.let { basal ->
+                                            { viewModel.deleteLog(basal) }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

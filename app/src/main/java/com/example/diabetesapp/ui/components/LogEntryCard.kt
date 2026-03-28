@@ -50,7 +50,9 @@ fun LogEntryCard(
     log: BolusLog,
     hypoLimit: Float = 70f,
     hyperLimit: Float = 180f,
-    onDelete: () -> Unit
+    associatedBasal: BolusLog? = null,
+    onDelete: () -> Unit,
+    onDeleteBasal: (() -> Unit)? = null  // NEW
 ){
     val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = timeFormatter.format(Date(log.timestamp))
@@ -225,16 +227,28 @@ fun LogEntryCard(
                                 log.bloodGlucose > hyperLimit -> Color(0xFFFF8F00)
                                 else -> Color(0xFF00897B)
                             }
-                            Text("BG: ${log.bloodGlucose.toInt()}", fontWeight = FontWeight.Bold, color = color, fontSize = 13.sp)
+                            Text(
+                                "BG: ${log.bloodGlucose.toInt()}",
+                                fontWeight = FontWeight.Bold,
+                                color = color,
+                                fontSize = 13.sp
+                            )
                         }
-                        if (log.carbs > 0) Text("${log.carbs.toInt()}g carbs", color = Color.Gray, fontSize = 12.sp)
+                        if (log.carbs > 0) Text(
+                            "${log.carbs.toInt()}g carbs",
+                            color = Color.Gray,
+                            fontSize = 12.sp
+                        )
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (log.eventType == "BASAL_INSULIN" && log.administeredDose > 0) {
+                            // Standalone basal entry
                             Text(
                                 "${String.format(Locale.US, "%.1f", log.administeredDose)} U",
-                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32)
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
@@ -245,17 +259,79 @@ fun LogEntryCard(
                                     .background(Color(0xFFE8F5E9), RoundedCornerShape(4.dp))
                                     .padding(horizontal = 4.dp, vertical = 1.dp)
                             )
-                            Icon(Icons.Default.Vaccines, contentDescription = null,
-                                tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(14.dp))
-                        } else if (log.administeredDose > 0) {
-                            if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
-                                Text("${String.format(Locale.US, "%.1f", log.suggestedDose)}U ",
-                                    color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Icon(
+                                Icons.Default.Vaccines, contentDescription = null,
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.padding(start = 4.dp).size(14.dp)
+                            )
+                        } else {
+                            // Normal bolus
+                            Column(horizontalAlignment = Alignment.End) {
+                                if (log.administeredDose > 0) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
+                                            Text(
+                                                "${
+                                                    String.format(
+                                                        Locale.US,
+                                                        "%.1f",
+                                                        log.suggestedDose
+                                                    )
+                                                }U ",
+                                                color = Color(0xFF81C784),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Text(
+                                            "${
+                                                String.format(
+                                                    Locale.US,
+                                                    "%.1f",
+                                                    log.administeredDose
+                                                )
+                                            } U",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                        Icon(
+                                            Icons.Default.Vaccines, contentDescription = null,
+                                            tint = Color(0xFF2E7D32),
+                                            modifier = Modifier.padding(start = 4.dp).size(14.dp)
+                                        )
+                                    }
+                                }
+                                // NEW: basal row below bolus
+                                if (associatedBasal != null) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .background(Color(0xFFE8F5E9), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Vaccines, contentDescription = null,
+                                            tint = Color(0xFF2E7D32),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            "+${
+                                                String.format(
+                                                    Locale.US,
+                                                    "%.1f",
+                                                    associatedBasal.administeredDose
+                                                )
+                                            } U basal",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
+                                }
                             }
-                            Text("${String.format(Locale.US, "%.1f", log.administeredDose)} U",
-                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                            Icon(Icons.Default.Vaccines, contentDescription = null,
-                                tint = Color(0xFF2E7D32), modifier = Modifier.padding(start = 4.dp).size(14.dp))
                         }
                     }
                 }
@@ -300,12 +376,21 @@ fun LogEntryCard(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete Entry?", fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to permanently delete this log? This will remove it from your history and graphs.") },
+            // Updated dialog text
+            text = {
+                Text(
+                    if (associatedBasal != null)
+                        "This will also delete the associated long-acting insulin entry logged nearby."
+                    else
+                        "Are you sure you want to permanently delete this log? This will remove it from your history and graphs."
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showDeleteConfirm = false
                         onDelete()
+                        onDeleteBasal?.invoke()  // NEW: delete basal too
                     }
                 ) {
                     Text("Delete", color = Color.Red, fontWeight = FontWeight.Bold)

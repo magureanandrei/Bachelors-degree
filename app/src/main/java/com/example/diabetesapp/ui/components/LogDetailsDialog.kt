@@ -22,7 +22,11 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun LogDetailsDialog(log: BolusLog, onDismiss: () -> Unit) {
+fun LogDetailsDialog(
+    log: BolusLog,
+    associatedBasal: BolusLog? = null,  // NEW
+    onDismiss: () -> Unit
+) {
     val formatter = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
 
     AlertDialog(
@@ -80,6 +84,16 @@ fun LogDetailsDialog(log: BolusLog, onDismiss: () -> Unit) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Insulin Given:", color = Color.Gray)
                         Text(if (log.administeredDose > 0) "${String.format(Locale.US, "%.1f", log.administeredDose)} U" else "None", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    }
+                    if (associatedBasal != null) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Long-Acting:", color = Color.Gray)
+                            Text(
+                                "${String.format(Locale.US, "%.1f", associatedBasal.administeredDose)} U",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
+                            )
+                        }
                     }
                 }
 

@@ -42,7 +42,10 @@ object IobCalculator {
             .filter { log ->
                 val dose = log.administeredDose
                 val ageMs = now - log.timestamp
-                dose > 0 && ageMs >= 0 && ageMs <= durationMs
+                dose > 0
+                        && ageMs >= 0
+                        && ageMs <= durationMs
+                        && log.eventType != "BASAL_INSULIN"  // NEW
             }
             .sumOf { log ->
                 val minutesAgo = ((now - log.timestamp) / 60000f)
@@ -64,7 +67,11 @@ object IobCalculator {
             val isManual = log.notes != "Auto-entry via CareLink"
                     && log.notes?.startsWith("Auto-imported") != true
                     && log.notes?.startsWith("Auto-detected") != true
-            log.administeredDose > 0 && ageMs >= 0 && ageMs <= durationMs && isManual
+            log.administeredDose > 0
+                    && ageMs >= 0
+                    && ageMs <= durationMs
+                    && isManual
+                    && log.eventType != "BASAL_INSULIN"  // NEW
         }.sumOf { log ->
             val minutesAgo = (now - log.timestamp) / 60000f
             val fraction = insulinActivityFraction(minutesAgo, durationMinutes)

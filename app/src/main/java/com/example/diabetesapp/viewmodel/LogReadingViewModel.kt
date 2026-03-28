@@ -205,7 +205,8 @@ class LogReadingViewModel(
     fun resetState() {
         val now = LocalTime.now()
         _uiState.value = LogReadingState(
-            eventTime = now.format(DateTimeFormatter.ofPattern("HH:mm"))
+            eventTime = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+            basalInsulin = ""  // ADD THIS
         )
     }
 

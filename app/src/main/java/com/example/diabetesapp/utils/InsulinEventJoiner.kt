@@ -36,20 +36,25 @@ object InsulinEventJoiner {
      */
     fun joinForHistory(
         logs: List<BolusLog>,
-        windowHours: Int = 2
+        windowHours: Int = 1  // tightened from 2h to 1h
     ): List<JoinedInsulinEvent> {
         val windowMs = windowHours * 60 * 60 * 1000L
         val basalLogs = logs.filter { it.eventType == "BASAL_INSULIN" }
         val bolusLogs = logs.filter { it.eventType != "BASAL_INSULIN" }
 
+        // Only merge if there is actually a bolus dose to pair with
         val usedBasalIds = mutableSetOf<Int>()
 
-        // For each bolus, find the nearest unused basal within window
         val joined = bolusLogs.map { bolus ->
-            val nearestBasal = basalLogs
-                .filter { it.id !in usedBasalIds }
-                .filter { kotlin.math.abs(it.timestamp - bolus.timestamp) <= windowMs }
-                .minByOrNull { kotlin.math.abs(it.timestamp - bolus.timestamp) }
+            // Only attach basal to entries that actually have insulin or carbs
+            val hasMeaningfulDose = bolus.administeredDose > 0 || bolus.carbs > 0
+
+            val nearestBasal = if (hasMeaningfulDose) {
+                basalLogs
+                    .filter { it.id !in usedBasalIds }
+                    .filter { kotlin.math.abs(it.timestamp - bolus.timestamp) <= windowMs }
+                    .minByOrNull { kotlin.math.abs(it.timestamp - bolus.timestamp) }
+            } else null
 
             if (nearestBasal != null) {
                 usedBasalIds.add(nearestBasal.id)
@@ -59,7 +64,7 @@ object InsulinEventJoiner {
             }
         }.toMutableList()
 
-        // Any basal not consumed by a bolus becomes its own entry
+        // Unconsumed basals become their own standalone entries
         val unconsumedBasals = basalLogs
             .filter { it.id !in usedBasalIds }
             .map { JoinedInsulinEvent(primaryLog = it) }

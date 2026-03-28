@@ -389,24 +389,46 @@ fun TimeScaledBgGraph(
                 }
                 // 7. SWIMLANE ICONS
 
+                // 7. SWIMLANE ICONS
+
+// Group events by rounded timestamp (within 30min buckets) to detect overlaps
+                val swimlaneByPosition = allSwimlaneEvents.groupBy {
+                    (it.timestamp / (30 * 60 * 1000L)) // bucket into 30min slots
+                }
+
                 allSwimlaneEvents.forEach { log ->
                     val x = timeToX(log.timestamp)
                     val iconRadius = 16f
 
+                    // Check if there's both a basal and a bolus near this timestamp
+                    val bucketKey = log.timestamp / (30 * 60 * 1000L)
+                    val bucket = swimlaneByPosition[bucketKey] ?: emptyList()
+                    val bucketHasBasal = bucket.any { it.eventType == "BASAL_INSULIN" }
+                    val bucketHasBolus = bucket.any { it.eventType != "BASAL_INSULIN" && (it.administeredDose > 0 || it.eventType == "SMART_BOLUS") }
+                    val hasOverlap = bucketHasBasal && bucketHasBolus
+
+                    // Offset: bolus shifts left, basal shifts right when both present
+                    val xOffset = when {
+                        hasOverlap && log.eventType == "BASAL_INSULIN" -> iconRadius + 2f
+                        hasOverlap && log.eventType != "BASAL_INSULIN" -> -(iconRadius + 2f)
+                        else -> 0f
+                    }
+                    val adjustedX = x + xOffset
+
                     fun drawSwimlaneIcon(
                         yPos: Float,
                         painter: androidx.compose.ui.graphics.vector.VectorPainter,
-                        tint: Color
+                        tint: Color,
+                        xPos: Float = adjustedX
                     ) {
-                        drawCircle(color = Color.White, radius = iconRadius, center = Offset(x, yPos))
-                        drawCircle(color = tint.copy(alpha = 0.2f), radius = iconRadius, center = Offset(x, yPos), style = Stroke(width = 2f))
-                        translate(left = x - 11f, top = yPos - 11f) {
+                        drawCircle(color = Color.White, radius = iconRadius, center = Offset(xPos, yPos))
+                        drawCircle(color = tint.copy(alpha = 0.2f), radius = iconRadius, center = Offset(xPos, yPos), style = Stroke(width = 2f))
+                        translate(left = xPos - 11f, top = yPos - 11f) {
                             with(painter) { draw(size = Size(22f, 22f), colorFilter = ColorFilter.tint(tint)) }
                         }
                     }
 
                     if (log.eventType == "BASAL_INSULIN") {
-                        // Long-acting: draw in green on insulin swimlane
                         drawSwimlaneIcon(insulinY, basalPainter, Color(0xFF2E7D32))
                     } else {
                         if (log.carbs > 0) drawSwimlaneIcon(carbsY, mealPainter, Color(0xFFE91E63))

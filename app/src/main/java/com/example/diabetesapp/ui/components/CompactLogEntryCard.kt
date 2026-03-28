@@ -39,6 +39,7 @@ fun CompactLogEntryCard(
     log: BolusLog,
     hypoLimit: Float = 70f,
     hyperLimit: Float = 180f,
+    associatedBasal: BolusLog? = null,
     onClick: () -> Unit
 ) {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -84,24 +85,20 @@ fun CompactLogEntryCard(
                     log.eventType == "SPORT" -> Icon(
                         Icons.Default.DirectionsRun, null,
                         tint = if (log.status == "PLANNED") Color(0xFFFF9800)
-                        else if (isWalk) Color(0xFF90A4AE)  // grey for auto walks
+                        else if (isWalk) Color(0xFF90A4AE)
                         else Color(0xFF00695C),
                         modifier = Modifier.size(16.dp)
                     )
                     log.eventType == "SMART_BOLUS" -> Icon(Icons.Default.AutoFixHigh, null, tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
                     log.eventType == "BASAL_INSULIN" -> Icon(
-                        Icons.Default.Vaccines,
-                        null,
-                        tint = Color(0xFF2E7D32), // dark green = long-acting
+                        Icons.Default.Vaccines, null,
+                        tint = Color(0xFF2E7D32),
                         modifier = Modifier.size(16.dp)
                     )
                     log.carbs > 0 && log.administeredDose >= 0.0 -> Icon(Icons.Default.Restaurant, null, tint = Color(0xFFE91E63), modifier = Modifier.size(16.dp))
                     log.administeredDose > 0 -> Icon(Icons.Default.Vaccines, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
                     else -> Icon(Icons.Default.Bloodtype, null, tint = Color(0xFFD32F2F), modifier = Modifier.size(16.dp))
-
-
                 }
-                // Auto-entry sync badge
                 if (isAutoEntry) {
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
@@ -114,6 +111,7 @@ fun CompactLogEntryCard(
             }
 
             if (log.eventType == "SPORT") {
+                // Middle: sport description
                 Row(modifier = Modifier.weight(1.5f)) {
                     Text(
                         "${log.sportDuration?.toInt()}m ${log.sportType}",
@@ -123,6 +121,7 @@ fun CompactLogEntryCard(
                         maxLines = 1
                     )
                 }
+                // Right: sport status badge
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
                     val isAutoActivity = log.notes?.contains("Auto-imported") == true
                             || log.notes?.startsWith("Auto-detected") == true
@@ -145,16 +144,19 @@ fun CompactLogEntryCard(
                     }
                 }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1.5f)) {
+                // Middle: BG and carbs
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1.5f)
+                ) {
                     if (log.bloodGlucose > 0) {
                         val color = when {
                             log.bloodGlucose < hypoLimit -> Color(0xFFE53935)
                             log.bloodGlucose > hyperLimit -> Color(0xFFFF8F00)
                             else -> Color(0xFF00897B)
                         }
-                        Text("${log.bloodGlucose}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
+                        Text("${log.bloodGlucose.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
                     } else {
-                        // Show "Auto-entry" label where BG would normally be
                         if (isAutoEntry) {
                             Text("auto", fontSize = 11.sp, color = Color(0xFF00897B),
                                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
@@ -162,9 +164,10 @@ fun CompactLogEntryCard(
                             Text("-", color = Color.LightGray)
                         }
                     }
-                    if (log.carbs > 0) { Text("${log.carbs}g", fontSize = 14.sp, color = Color.Gray) }
+                    if (log.carbs > 0) { Text("${log.carbs.toInt()}g", fontSize = 14.sp, color = Color.Gray) }
                 }
 
+                // Right: dose column
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.weight(1f)) {
                     if (log.eventType == "BASAL_INSULIN") {
                         Column(horizontalAlignment = Alignment.End) {
@@ -180,15 +183,27 @@ fun CompactLogEntryCard(
                                 color = Color(0xFF2E7D32).copy(alpha = 0.7f)
                             )
                         }
-                    } else if (log.administeredDose > 0) {
-                        Text(
-                            "${String.format(Locale.US, "%.1f", log.administeredDose)}U",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isAutoEntry) Color(0xFF00897B) else Color(0xFF2E7D32)
-                        )
                     } else {
-                        Text("-", color = Color.LightGray)
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (log.administeredDose > 0) {
+                                Text(
+                                    "${String.format(Locale.US, "%.1f", log.administeredDose)}U",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAutoEntry) Color(0xFF00897B) else Color(0xFF2E7D32)
+                                )
+                            } else {
+                                Text("-", color = Color.LightGray)
+                            }
+                            if (associatedBasal != null) {
+                                Text(
+                                    "+${String.format(Locale.US, "%.1f", associatedBasal.administeredDose)}U basal",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
+                        }
                     }
                 }
             }
