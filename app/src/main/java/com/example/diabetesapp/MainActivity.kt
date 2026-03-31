@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.BottomNavBar
 import com.example.diabetesapp.ui.screens.*
 import com.example.diabetesapp.ui.theme.DiabetesAppTheme
@@ -28,6 +30,15 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen() {
+    val context = LocalContext.current
+    val repository = remember { BolusSettingsRepository.getInstance(context) }
+    var onboardingComplete by remember { mutableStateOf(repository.hasCompletedOnboarding()) }
+
+    if (!onboardingComplete) {
+        OnboardingScreen(onComplete = { onboardingComplete = true })
+        return
+    }
+
     // 1. Create a Stack to remember navigation history
     var backStack by remember { mutableStateOf(listOf("home")) }
     val currentScreen = backStack.last()

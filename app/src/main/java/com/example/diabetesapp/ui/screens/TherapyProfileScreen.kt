@@ -31,7 +31,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun TherapyProfileScreen(
     modifier: Modifier = Modifier,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    showTopBar: Boolean = true
 ) {
     val context = LocalContext.current
     val repository = remember { BolusSettingsRepository.getInstance(context) }
@@ -66,13 +67,25 @@ fun TherapyProfileScreen(
                         .padding(16.dp)
                 ) {
                     Button(
-                        onClick = { viewModel.saveProfile() },
+                        onClick = {
+                            if (showTopBar) {
+                                viewModel.saveProfile()
+                            } else {
+                                // Save immediately then navigate — avoids the LaunchedEffect snackbar delay
+                                viewModel.saveProfile()
+                                onNavigateBack()
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
-                        enabled = uiState.hasChanges,
+                        enabled = if (showTopBar) uiState.hasChanges else true,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B), disabledContainerColor = Color.LightGray),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Save Profile", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (showTopBar) "Save Profile" else "Continue →",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -85,20 +98,22 @@ fun TherapyProfileScreen(
                 .padding(paddingValues) // <--- MAGIC: This prevents the bottom bar from covering your content!
         ) {
             // --- CUSTOM TOP BAR ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (showTopBar) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color(0xFF00897B)) }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Therapy Profile", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { showInfoDialog = true }) { Icon(Icons.Default.Info, "Terminology Info", tint = Color(0xFF00897B)) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color(0xFF00897B)) }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Therapy Profile", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { showInfoDialog = true }) { Icon(Icons.Default.Info, "Terminology Info", tint = Color(0xFF00897B)) }
+                    }
                 }
             }
 
