@@ -455,6 +455,11 @@ fun BolusSettingsScreen(
                         hourlyErrors = uiState.icrErrors,
                         globalError = uiState.icrGlobalError
                     )
+                    Text(
+                        text = "How many grams of carbs 1 unit of insulin covers.",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
                 }
 
                 // Card 3: Sensitivity Factor (ISF) - Simple/Advanced Mode
@@ -488,6 +493,11 @@ fun BolusSettingsScreen(
                         onHourValueChange = { hour, value -> viewModel.updateIsfAtHour(hour, value) },
                         hourlyErrors = uiState.isfErrors,
                         globalError = uiState.isfGlobalError
+                    )
+                    Text(
+                        text = "How much 1 unit of insulin lowers your blood glucose (mg/dL).",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
                     )
                 }
 
