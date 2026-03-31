@@ -24,12 +24,12 @@ object BolusCalculatorHelper {
         settings: BolusSettings,
         activeInsulin: Float = 0f
     ): Float {
-        // Get current time segment (MORNING/NOON/EVENING/NIGHT)
-        val currentSegment = TimeSegment.getCurrentSegment()
+        // Get current hour for time-dependent settings
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
 
         // Get appropriate ICR and ISF for this time
-        val icr = settings.getIcrForSegment(currentSegment)
-        val isf = settings.getIsfForSegment(currentSegment)
+        val icr = settings.getIcrForHour(hour)
+        val isf = settings.getIsfForHour(hour)
 
         // Calculate carb coverage
         val carbBolus = if (carbs > 0) carbs / icr else 0f
@@ -49,8 +49,8 @@ object BolusCalculatorHelper {
      * Calculate only the carb coverage portion
      */
     fun calculateCarbBolus(carbs: Float, settings: BolusSettings): Float {
-        val segment = TimeSegment.getCurrentSegment()
-        val icr = settings.getIcrForSegment(segment)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val icr = settings.getIcrForHour(hour)
         return if (carbs > 0) carbs / icr else 0f
     }
 
@@ -58,8 +58,8 @@ object BolusCalculatorHelper {
      * Calculate only the correction portion
      */
     fun calculateCorrectionBolus(currentBG: Float, settings: BolusSettings): Float {
-        val segment = TimeSegment.getCurrentSegment()
-        val isf = settings.getIsfForSegment(segment)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val isf = settings.getIsfForHour(hour)
         val bgDelta = currentBG - settings.targetBG
         return bgDelta / isf
     }
@@ -69,8 +69,9 @@ object BolusCalculatorHelper {
      * @return Pair of (segment, icr value)
      */
     fun getCurrentIcrWithSegment(settings: BolusSettings): Pair<TimeSegment, Float> {
-        val segment = TimeSegment.getCurrentSegment()
-        return segment to settings.getIcrForSegment(segment)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val segment = TimeSegment.getSegmentForHour(hour)
+        return segment to settings.getIcrForHour(hour)
     }
 
     /**
@@ -78,8 +79,9 @@ object BolusCalculatorHelper {
      * @return Pair of (segment, isf value)
      */
     fun getCurrentIsfWithSegment(settings: BolusSettings): Pair<TimeSegment, Float> {
-        val segment = TimeSegment.getCurrentSegment()
-        return segment to settings.getIsfForSegment(segment)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val segment = TimeSegment.getSegmentForHour(hour)
+        return segment to settings.getIsfForHour(hour)
     }
 
     /**
@@ -93,9 +95,8 @@ object BolusCalculatorHelper {
         settings: BolusSettings,
         activeInsulin: Float = 0f
     ): Float {
-        val segment = TimeSegment.getSegmentForHour(hour)
-        val icr = settings.getIcrForSegment(segment)
-        val isf = settings.getIsfForSegment(segment)
+        val icr = settings.getIcrForHour(hour)
+        val isf = settings.getIsfForHour(hour)
 
         val carbBolus = if (carbs > 0) carbs / icr else 0f
         val correctionBolus = (currentBG - settings.targetBG) / isf
@@ -120,9 +121,10 @@ object BolusCalculatorHelper {
         settings: BolusSettings,
         activeInsulin: Float = 0f
     ): BolusBreakdown {
-        val segment = TimeSegment.getCurrentSegment()
-        val icr = settings.getIcrForSegment(segment)
-        val isf = settings.getIsfForSegment(segment)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val segment = TimeSegment.getSegmentForHour(hour)
+        val icr = settings.getIcrForHour(hour)
+        val isf = settings.getIsfForHour(hour)
 
         val carbBolus = if (carbs > 0) carbs / icr else 0f
         val correctionBolus = (currentBG - settings.targetBG) / isf
@@ -169,4 +171,3 @@ data class BolusBreakdown(
         }
     }
 }
-

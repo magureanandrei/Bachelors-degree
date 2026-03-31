@@ -424,18 +424,15 @@ fun BolusSettingsScreen(
 
                 // Card 2: Insulin-to-Carb Ratio (ICR) - Simple/Advanced Mode
                 val icrSummary = if (!uiState.icrTimeDependent) {
-                    "1:${draftSettings.icrMorning}"
+                    "1:${draftSettings.icrValues[0]}"
                 } else {
-                    val values = listOf(
-                        draftSettings.icrMorning.toIntOrNull() ?: 0,
-                        draftSettings.icrNoon.toIntOrNull() ?: 0,
-                        draftSettings.icrEvening.toIntOrNull() ?: 0,
-                        draftSettings.icrNight.toIntOrNull() ?: 0
-                    ).filter { it > 0 }
+                    val values = draftSettings.icrValues.mapNotNull { it.toIntOrNull() }.filter { it > 0 }
                     if (values.distinct().size == 1) {
                         "1:${values.first()}"
-                    } else {
+                    } else if (values.isNotEmpty()) {
                         "1:${values.minOrNull()}-${values.maxOrNull()}"
+                    } else {
+                        "Not Set"
                     }
                 }
 
@@ -453,7 +450,7 @@ fun BolusSettingsScreen(
                     ) {
                         Column {
                             OutlinedTextField(
-                                value = draftSettings.icrMorning,
+                                value = draftSettings.icrValues[0],
                                 onValueChange = {
                                     viewModel.updateGlobalIcr(it)
                                 },
@@ -505,7 +502,7 @@ fun BolusSettingsScreen(
                         Switch(
                             checked = uiState.icrTimeDependent,
                             onCheckedChange = { enabled ->
-                                viewModel.toggleIcrTimeDependent(enabled, draftSettings.icrMorning)
+                                viewModel.toggleIcrTimeDependent(enabled)
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
@@ -526,196 +523,47 @@ fun BolusSettingsScreen(
                             modifier = Modifier.padding(top = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Morning (06-11)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                            for (hour in 0..23) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Text(
-                                        text = "Morning",
+                                        text = String.format("%02d:00", hour),
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = Color.Black
+                                        color = Color.Black,
+                                        modifier = Modifier.width(60.dp)
                                     )
-                                    Text(
-                                        text = "06:00 - 11:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.icrMorning,
-                                        onValueChange = {
-                                            viewModel.updateIcrMorning(it)
-                                        },
-                                        suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.icrMorningError != null
-                                    )
-                                    if (uiState.icrMorningError != null) {
-                                        Text(
-                                            text = uiState.icrMorningError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
+                                    Column {
+                                        OutlinedTextField(
+                                            value = draftSettings.icrValues[hour],
+                                            onValueChange = { viewModel.updateIcrAtHour(hour, it) },
+                                            suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            modifier = Modifier.width(120.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF00897B),
+                                                unfocusedBorderColor = Color(0xFFE0E0E0),
+                                                errorBorderColor = Color.Red
+                                            ),
+                                            singleLine = true,
+                                            isError = uiState.icrErrors[hour] != null
                                         )
+                                        if (uiState.icrErrors[hour] != null) {
+                                            Text(
+                                                text = uiState.icrErrors[hour]!!,
+                                                color = Color.Red,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier.width(120.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
-
-                            // Noon (11-16)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Noon",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black
-                                    )
-                                    Text(
-                                        text = "11:00 - 16:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.icrNoon,
-                                        onValueChange = {
-                                            viewModel.updateIcrNoon(it)
-                                        },
-                                        suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.icrNoonError != null
-                                    )
-                                    if (uiState.icrNoonError != null) {
-                                        Text(
-                                            text = uiState.icrNoonError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Evening (16-23)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Evening",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black
-                                    )
-                                    Text(
-                                        text = "16:00 - 23:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.icrEvening,
-                                        onValueChange = {
-                                            viewModel.updateIcrEvening(it)
-                                        },
-                                        suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.icrEveningError != null
-                                    )
-                                    if (uiState.icrEveningError != null) {
-                                        Text(
-                                            text = uiState.icrEveningError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Night (23-06)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Night",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black
-                                    )
-                                    Text(
-                                        text = "23:00 - 06:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.icrNight,
-                                        onValueChange = {
-                                            viewModel.updateIcrNight(it)
-                                        },
-                                        suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.icrNightError != null
-                                    )
-                                    if (uiState.icrNightError != null) {
-                                        Text(
-                                            text = uiState.icrNightError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
-                                        )
-                                    }
-                                }
-                            }
-
                             Text(
-                                text = "Different carb ratios for each time period.",
+                                text = "Different carb ratios for each hour of the day.",
                                 fontSize = 12.sp,
                                 color = Color.Gray,
                                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
@@ -727,18 +575,15 @@ fun BolusSettingsScreen(
 
                 // Card 3: Sensitivity Factor (ISF) - Simple/Advanced Mode
                 val isfSummary = if (!uiState.isfTimeDependent) {
-                    "1:${draftSettings.isfMorning}"
+                    "1:${draftSettings.isfValues[0]}"
                 } else {
-                    val values = listOf(
-                        draftSettings.isfMorning.toIntOrNull() ?: 0,
-                        draftSettings.isfNoon.toIntOrNull() ?: 0,
-                        draftSettings.isfEvening.toIntOrNull() ?: 0,
-                        draftSettings.isfNight.toIntOrNull() ?: 0
-                    ).filter { it > 0 }
+                    val values = draftSettings.isfValues.mapNotNull { it.toIntOrNull() }.filter { it > 0 }
                     if (values.distinct().size == 1) {
                         "1:${values.first()}"
-                    } else {
+                    } else if (values.isNotEmpty()) {
                         "1:${values.minOrNull()}-${values.maxOrNull()}"
+                    } else {
+                        "Not Set"
                     }
                 }
 
@@ -756,7 +601,7 @@ fun BolusSettingsScreen(
                     ) {
                         Column {
                             OutlinedTextField(
-                                value = draftSettings.isfMorning,
+                                value = draftSettings.isfValues[0],
                                 onValueChange = {
                                     viewModel.updateGlobalIsf(it)
                                 },
@@ -808,7 +653,7 @@ fun BolusSettingsScreen(
                         Switch(
                             checked = uiState.isfTimeDependent,
                             onCheckedChange = { enabled ->
-                                viewModel.toggleIsfTimeDependent(enabled, draftSettings.isfMorning)
+                                viewModel.toggleIsfTimeDependent(enabled)
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
@@ -829,196 +674,47 @@ fun BolusSettingsScreen(
                             modifier = Modifier.padding(top = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Morning (06-11)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                            for (hour in 0..23) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Text(
-                                        text = "Morning",
+                                        text = String.format("%02d:00", hour),
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = Color.Black
+                                        color = Color.Black,
+                                        modifier = Modifier.width(60.dp)
                                     )
-                                    Text(
-                                        text = "06:00 - 11:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.isfMorning,
-                                        onValueChange = {
-                                            viewModel.updateIsfMorning(it)
-                                        },
-                                        suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.isfMorningError != null
-                                    )
-                                    if (uiState.isfMorningError != null) {
-                                        Text(
-                                            text = uiState.isfMorningError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
+                                    Column {
+                                        OutlinedTextField(
+                                            value = draftSettings.isfValues[hour],
+                                            onValueChange = { viewModel.updateIsfAtHour(hour, it) },
+                                            suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            modifier = Modifier.width(120.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF00897B),
+                                                unfocusedBorderColor = Color(0xFFE0E0E0),
+                                                errorBorderColor = Color.Red
+                                            ),
+                                            singleLine = true,
+                                            isError = uiState.isfErrors[hour] != null
                                         )
+                                        if (uiState.isfErrors[hour] != null) {
+                                            Text(
+                                                text = uiState.isfErrors[hour]!!,
+                                                color = Color.Red,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier.width(120.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
-
-                            // Noon (11-16)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Noon",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black
-                                    )
-                                    Text(
-                                        text = "11:00 - 16:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.isfNoon,
-                                        onValueChange = {
-                                            viewModel.updateIsfNoon(it)
-                                        },
-                                        suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.isfNoonError != null
-                                    )
-                                    if (uiState.isfNoonError != null) {
-                                        Text(
-                                            text = uiState.isfNoonError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Evening (16-23)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Evening",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black
-                                    )
-                                    Text(
-                                        text = "16:00 - 23:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.isfEvening,
-                                        onValueChange = {
-                                            viewModel.updateIsfEvening(it)
-                                        },
-                                        suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.isfEveningError != null
-                                    )
-                                    if (uiState.isfEveningError != null) {
-                                        Text(
-                                            text = uiState.isfEveningError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Night (23-06)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Night",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black
-                                    )
-                                    Text(
-                                        text = "23:00 - 06:00",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF757575)
-                                    )
-                                }
-                                Column {
-                                    OutlinedTextField(
-                                        value = draftSettings.isfNight,
-                                        onValueChange = {
-                                            viewModel.updateIsfNight(it)
-                                        },
-                                        suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.width(120.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFF00897B),
-                                            unfocusedBorderColor = Color(0xFFE0E0E0),
-                                            errorBorderColor = Color.Red
-                                        ),
-                                        singleLine = true,
-                                        isError = uiState.isfNightError != null
-                                    )
-                                    if (uiState.isfNightError != null) {
-                                        Text(
-                                            text = uiState.isfNightError!!,
-                                            color = Color.Red,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.width(120.dp)
-                                        )
-                                    }
-                                }
-                            }
-
                             Text(
-                                text = "Different sensitivity factors for each time period.",
+                                text = "Different sensitivity factors for each hour of day.",
                                 fontSize = 12.sp,
                                 color = Color.Gray,
                                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
