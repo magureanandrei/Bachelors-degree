@@ -4,10 +4,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,8 +24,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
+import com.example.diabetesapp.ui.components.ActivityTutorialModal
 import com.example.diabetesapp.ui.components.CgmTutorialModal
 import com.example.diabetesapp.ui.components.MenuOptionCard
+import com.example.diabetesapp.viewmodel.ActivityStatus
 import com.example.diabetesapp.viewmodel.CgmStatus
 import com.example.diabetesapp.viewmodel.MenuViewModel
 import com.example.diabetesapp.viewmodel.MenuViewModelFactory
@@ -38,10 +40,12 @@ fun MenuScreen(
 ) {
     val context = LocalContext.current
     val settingsRepository = remember { BolusSettingsRepository.getInstance(context) }
-    val viewModel: MenuViewModel = viewModel(factory = MenuViewModelFactory(settingsRepository))
+    val viewModel: MenuViewModel = viewModel(factory = MenuViewModelFactory(settingsRepository, context))
     val cgmStatus by viewModel.cgmStatus.collectAsState()
+    val activityStatus by viewModel.activityStatus.collectAsState()
 
     var showCgmModal by remember { mutableStateOf(false) }
+    var showActivityModal by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
@@ -120,12 +124,29 @@ fun MenuScreen(
             }
         )
 
-        // 4. Wearables placeholder
+        // 4. Activity & Sports — Health Connect status dot
         MenuOptionCard(
-            title = "Wearables",
-            subtitle = "Smartwatch sync (Coming Soon)",
-            icon = Icons.Default.Watch,
-            onClick = { }
+            title = "Activity & Sports",
+            subtitle = if (activityStatus is ActivityStatus.Connected) "Health Connect connected" else "Health Connect not connected",
+            icon = Icons.AutoMirrored.Filled.DirectionsRun,
+            onClick = { showActivityModal = true },
+            trailingContent = {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
+                    if (activityStatus is ActivityStatus.Connected) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            drawCircle(
+                                color = Color(0xFF4CAF50).copy(alpha = pulseAlpha),
+                                radius = 7.dp.toPx() * pulseScale // core radius = 7dp, scale it out
+                            )
+                        }
+                    }
+                    Canvas(modifier = Modifier.size(14.dp)) {
+                        drawCircle(
+                            color = if (activityStatus is ActivityStatus.Connected) Color(0xFF4CAF50) else Color(0xFFF44336)
+                        )
+                    }
+                }
+            }
         )
     }
 
@@ -133,6 +154,13 @@ fun MenuScreen(
         CgmTutorialModal(
             cgmStatus = cgmStatus,
             onDismiss = { showCgmModal = false }
+        )
+    }
+
+    if (showActivityModal) {
+        ActivityTutorialModal(
+            activityStatus = activityStatus,
+            onDismiss = { showActivityModal = false }
         )
     }
 }
