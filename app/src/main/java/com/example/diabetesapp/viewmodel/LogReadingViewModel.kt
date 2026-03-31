@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
@@ -113,8 +114,8 @@ class LogReadingViewModel(
                 if (settings.value.isCgmEnabled) {
                     val history = CgmHelper.getBgHistoryFromXDrip()
                     val closest = history
-                        .filter { Math.abs(it.timestamp - timestamp) <= 10 * 60 * 1000L }
-                        .minByOrNull { Math.abs(it.timestamp - timestamp) }
+                        .filter { abs(it.timestamp - timestamp) <= 10 * 60 * 1000L }
+                        .minByOrNull { abs(it.timestamp - timestamp) }
                     if (closest != null) {
                         withContext(Dispatchers.Main) {
                             _uiState.value = _uiState.value.copy(
@@ -131,7 +132,7 @@ class LogReadingViewModel(
                     // Manual path — check local DB
                     val closest = repository.getLogsNearTimestamp(timestamp, windowMs)
                         .filter { it.bloodGlucose > 0 }
-                        .minByOrNull { Math.abs(it.timestamp - timestamp) }
+                        .minByOrNull { abs(it.timestamp - timestamp) }
                     if (closest != null) {
                         withContext(Dispatchers.Main) {
                             _uiState.value = _uiState.value.copy(

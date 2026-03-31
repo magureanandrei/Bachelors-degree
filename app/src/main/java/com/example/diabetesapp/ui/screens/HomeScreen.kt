@@ -165,7 +165,7 @@ fun HomeScreen(
         }
     }
 
-    // --- The 5-Minute Polling Engine ---
+    // --- The 1-Minute Polling Engine ---
     LaunchedEffect(Unit) {
         // while(isActive) keeps this loop running endlessly in the background
         // as long as the Home Screen is open.

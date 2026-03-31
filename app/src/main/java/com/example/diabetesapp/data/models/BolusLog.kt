@@ -33,4 +33,7 @@ data class BolusLog(
     val isExtremeHeat: Boolean = false,
 
     val clinicalSuggestion: String?
-)
+) {
+    val isAutoEntry: Boolean
+        get() = notes.startsWith("Auto-")
+}

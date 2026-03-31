@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
@@ -232,7 +233,7 @@ class DashboardViewModel(
         val existingLogs = allLogs.value
         treatments.forEach { treatment ->
             val alreadySaved = existingLogs.any { existing ->
-                Math.abs(existing.timestamp - treatment.timestamp) <= 2 * 60 * 1000L
+                abs(existing.timestamp - treatment.timestamp) <= 2 * 60 * 1000L
                         && existing.notes == "Auto-entry via CareLink"
             }
             if (!alreadySaved && treatment.bloodGlucose > 0) {

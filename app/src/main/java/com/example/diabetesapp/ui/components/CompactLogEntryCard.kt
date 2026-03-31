@@ -44,9 +44,7 @@ fun CompactLogEntryCard(
 ) {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     val timeString = formatter.format(Date(log.timestamp))
-    val isAutoEntry = log.notes == "Auto-entry via CareLink"
-            || log.notes?.startsWith("Auto-imported") == true
-            || log.notes?.startsWith("Auto-detected") == true
+    val isAutoEntry = log.isAutoEntry
     val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
     if (log.eventType == "SETTINGS_CHANGE") return
 

@@ -60,9 +60,7 @@ fun LogEntryCard(
     var isExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    val isAutoEntry = log.notes?.contains("Auto-imported") == true
-            || log.notes?.startsWith("Auto-detected") == true
-            || log.notes == "Auto-entry via CareLink"
+    val isAutoEntry = log.isAutoEntry
     val isWalk = log.eventType == "SPORT" && log.sportType == "Walking" && isAutoEntry
     if (log.eventType == "SETTINGS_CHANGE") {
         SettingsChangeDivider(

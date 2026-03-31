@@ -396,39 +396,6 @@ class BolusSettingsViewModel(
             }
         }
     }
-
-    /**
-     * Validate and save all settings (legacy method for compatibility)
-     * Now delegates to saveSettings() after validation
-     */
-    @Suppress("UNUSED_PARAMETER")
-    @Deprecated("Use saveSettings() instead", ReplaceWith("saveSettings()"))
-    fun validateAndSave(
-        durationText: String,
-        targetBGText: String,
-        icrGlobalText: String,
-        icrMorningText: String,
-        icrNoonText: String,
-        icrEveningText: String,
-        icrNightText: String,
-        isfGlobalText: String,
-        isfMorningText: String,
-        isfNoonText: String,
-        isfEveningText: String,
-        isfNightText: String
-    ): Boolean {
-        // All validation is now done in real-time
-        // Just check if there are any errors and save
-        if (!areAllFieldsValid()) {
-            _uiState.value = _uiState.value.copy(
-                saveMessage = "Please fix invalid fields before saving"
-            )
-            return false
-        }
-
-        saveSettings()
-        return true
-    }
 }
 
 class BolusSettingsViewModelFactory(

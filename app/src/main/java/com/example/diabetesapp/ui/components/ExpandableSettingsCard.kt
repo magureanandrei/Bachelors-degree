@@ -93,7 +93,7 @@ fun ExpandableSettingsCard(
                         .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Divider(color = Color(0xFFE0E0E0), thickness = 1.dp)
+                    HorizontalDivider(color = Color(0xFFE0E0E0), thickness = 1.dp)
                     content()
                 }
             }
