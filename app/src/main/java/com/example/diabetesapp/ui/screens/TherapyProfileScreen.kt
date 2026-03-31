@@ -151,7 +151,7 @@ fun TherapyProfileScreen(
 
                 Text("Glucose Tracking Source", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                 Row(modifier = Modifier.fillMaxWidth().background(Color(0xFFE0E0E0), RoundedCornerShape(12.dp)).padding(4.dp)) {
-                    Box(modifier = Modifier.weight(1f).background(if (uiState.glucoseSource == "MANUAL") Color.White else Color.Transparent, RoundedCornerShape(8.dp)).clickable { viewModel.updateGlucoseSource("MANUAL") }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text("Fingersticks", fontWeight = FontWeight.Bold, color = if (uiState.glucoseSource == "MANUAL") Color(0xFF00695C) else Color.Gray) }
+                    Box(modifier = Modifier.weight(1f).background(if (uiState.glucoseSource == "MANUAL") Color.White else Color.Transparent, RoundedCornerShape(8.dp)).clickable { viewModel.updateGlucoseSource("MANUAL") }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text("Manual", fontWeight = FontWeight.Bold, color = if (uiState.glucoseSource == "MANUAL") Color(0xFF00695C) else Color.Gray) }
                     Box(modifier = Modifier.weight(1f).background(if (uiState.glucoseSource == "CGM") Color.White else Color.Transparent, RoundedCornerShape(8.dp)).clickable { viewModel.updateGlucoseSource("CGM") }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text("CGM Sensor", fontWeight = FontWeight.Bold, color = if (uiState.glucoseSource == "CGM") Color(0xFF00695C) else Color.Gray) }
                 }
             }

@@ -30,7 +30,8 @@ fun MenuOptionCard(
     title: String,
     subtitle: String,
     icon: ImageVector,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
@@ -64,9 +65,14 @@ fun MenuOptionCard(
                 )
                 Text(
                     text = subtitle,
-                    fontSize = 12.sp,
+                    fontSize = 10.sp,
                     color = Color.Gray
                 )
+            }
+
+            if (trailingContent != null) {
+                trailingContent()
+                Spacer(modifier = Modifier.width(4.dp))
             }
 
             Icon(
