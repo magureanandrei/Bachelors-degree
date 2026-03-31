@@ -36,6 +36,7 @@ import com.example.diabetesapp.viewmodel.BolusSettingsViewModelFactory
 import com.example.diabetesapp.viewmodel.ExpandableCard
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import com.example.diabetesapp.ui.components.HourlyRateEditor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -442,135 +443,18 @@ fun BolusSettingsScreen(
                     isExpanded = viewModel.isCardExpanded(ExpandableCard.ICR),
                     onToggleExpand = { viewModel.toggleCardExpansion(ExpandableCard.ICR) }
                 ) {
-                    // Global Input (Simple Mode)
-                    AnimatedVisibility(
-                        visible = !uiState.icrTimeDependent,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column {
-                            OutlinedTextField(
-                                value = draftSettings.icrValues[0],
-                                onValueChange = {
-                                    viewModel.updateGlobalIcr(it)
-                                },
-                                label = { Text("1 Unit covers __ g carbs") },
-                                suffix = { Text("g/unit", fontSize = 12.sp, color = Color.Gray) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF00897B),
-                                    focusedLabelColor = Color(0xFF00897B),
-                                    unfocusedBorderColor = Color(0xFFE0E0E0),
-                                    errorBorderColor = Color.Red
-                                ),
-                                supportingText = {
-                                    if (uiState.icrGlobalError != null) {
-                                        Text(
-                                            text = uiState.icrGlobalError!!,
-                                            color = Color.Red,
-                                            fontSize = 12.sp
-                                        )
-                                    } else {
-                                        Text(
-                                            text = "Standard ratio for all times of day.",
-                                            fontSize = 12.sp,
-                                            color = Color.Gray
-                                        )
-                                    }
-                                },
-                                isError = uiState.icrGlobalError != null
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-
-                    // Time Dependent Toggle Switch
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Time Dependent Settings",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.Black
-                        )
-                        Switch(
-                            checked = uiState.icrTimeDependent,
-                            onCheckedChange = { enabled ->
-                                viewModel.toggleIcrTimeDependent(enabled)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF00897B),
-                                uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = Color.Gray
-                            )
-                        )
-                    }
-
-                    // 4-Segment Inputs (Advanced Mode)
-                    AnimatedVisibility(
-                        visible = uiState.icrTimeDependent,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(top = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            for (hour in 0..23) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = String.format("%02d:00", hour),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black,
-                                        modifier = Modifier.width(60.dp)
-                                    )
-                                    Column {
-                                        OutlinedTextField(
-                                            value = draftSettings.icrValues[hour],
-                                            onValueChange = { viewModel.updateIcrAtHour(hour, it) },
-                                            suffix = { Text("g/unit", fontSize = 11.sp, color = Color.Gray) },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                            modifier = Modifier.width(120.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = Color(0xFF00897B),
-                                                unfocusedBorderColor = Color(0xFFE0E0E0),
-                                                errorBorderColor = Color.Red
-                                            ),
-                                            singleLine = true,
-                                            isError = uiState.icrErrors[hour] != null
-                                        )
-                                        if (uiState.icrErrors[hour] != null) {
-                                            Text(
-                                                text = uiState.icrErrors[hour]!!,
-                                                color = Color.Red,
-                                                fontSize = 10.sp,
-                                                modifier = Modifier.width(120.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            Text(
-                                text = "Different carb ratios for each hour of the day.",
-                                fontSize = 12.sp,
-                                color = Color.Gray,
-                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
+                    HourlyRateEditor(
+                        label = "ICR",
+                        unit = "g/U",
+                        isTimeDependent = uiState.icrTimeDependent,
+                        onToggleTimeDependent = { viewModel.toggleIcrTimeDependent(it) },
+                        globalValue = draftSettings.icrValues.getOrElse(0) { "10" },
+                        onGlobalValueChange = { viewModel.updateGlobalIcr(it) },
+                        hourlyValues = draftSettings.icrValues,
+                        onHourValueChange = { hour, value -> viewModel.updateIcrAtHour(hour, value) },
+                        hourlyErrors = uiState.icrErrors,
+                        globalError = uiState.icrGlobalError
+                    )
                 }
 
                 // Card 3: Sensitivity Factor (ISF) - Simple/Advanced Mode
@@ -593,135 +477,18 @@ fun BolusSettingsScreen(
                     isExpanded = viewModel.isCardExpanded(ExpandableCard.ISF),
                     onToggleExpand = { viewModel.toggleCardExpansion(ExpandableCard.ISF) }
                 ) {
-                    // Global Input (Simple Mode)
-                    AnimatedVisibility(
-                        visible = !uiState.isfTimeDependent,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column {
-                            OutlinedTextField(
-                                value = draftSettings.isfValues[0],
-                                onValueChange = {
-                                    viewModel.updateGlobalIsf(it)
-                                },
-                                label = { Text("1 Unit lowers BG by __ mg/dL") },
-                                suffix = { Text("mg/dL", fontSize = 12.sp, color = Color.Gray) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF00897B),
-                                    focusedLabelColor = Color(0xFF00897B),
-                                    unfocusedBorderColor = Color(0xFFE0E0E0),
-                                    errorBorderColor = Color.Red
-                                ),
-                                supportingText = {
-                                    if (uiState.isfGlobalError != null) {
-                                        Text(
-                                            text = uiState.isfGlobalError!!,
-                                            color = Color.Red,
-                                            fontSize = 12.sp
-                                        )
-                                    } else {
-                                        Text(
-                                            text = "How much 1 unit lowers blood glucose for all times.",
-                                            fontSize = 12.sp,
-                                            color = Color.Gray
-                                        )
-                                    }
-                                },
-                                isError = uiState.isfGlobalError != null
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-
-                    // Time Dependent Toggle Switch
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Time Dependent Settings",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.Black
-                        )
-                        Switch(
-                            checked = uiState.isfTimeDependent,
-                            onCheckedChange = { enabled ->
-                                viewModel.toggleIsfTimeDependent(enabled)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF00897B),
-                                uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = Color.Gray
-                            )
-                        )
-                    }
-
-                    // 4-Segment Inputs (Advanced Mode)
-                    AnimatedVisibility(
-                        visible = uiState.isfTimeDependent,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(top = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            for (hour in 0..23) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = String.format("%02d:00", hour),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Black,
-                                        modifier = Modifier.width(60.dp)
-                                    )
-                                    Column {
-                                        OutlinedTextField(
-                                            value = draftSettings.isfValues[hour],
-                                            onValueChange = { viewModel.updateIsfAtHour(hour, it) },
-                                            suffix = { Text("mg/dL", fontSize = 11.sp, color = Color.Gray) },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                            modifier = Modifier.width(120.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = Color(0xFF00897B),
-                                                unfocusedBorderColor = Color(0xFFE0E0E0),
-                                                errorBorderColor = Color.Red
-                                            ),
-                                            singleLine = true,
-                                            isError = uiState.isfErrors[hour] != null
-                                        )
-                                        if (uiState.isfErrors[hour] != null) {
-                                            Text(
-                                                text = uiState.isfErrors[hour]!!,
-                                                color = Color.Red,
-                                                fontSize = 10.sp,
-                                                modifier = Modifier.width(120.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            Text(
-                                text = "Different sensitivity factors for each hour of day.",
-                                fontSize = 12.sp,
-                                color = Color.Gray,
-                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
+                    HourlyRateEditor(
+                        label = "Correction Factor",
+                        unit = "mg/dL per U",
+                        isTimeDependent = uiState.isfTimeDependent,
+                        onToggleTimeDependent = { viewModel.toggleIsfTimeDependent(it) },
+                        globalValue = draftSettings.isfValues.getOrElse(0) { "50" },
+                        onGlobalValueChange = { viewModel.updateGlobalIsf(it) },
+                        hourlyValues = draftSettings.isfValues,
+                        onHourValueChange = { hour, value -> viewModel.updateIsfAtHour(hour, value) },
+                        hourlyErrors = uiState.isfErrors,
+                        globalError = uiState.isfGlobalError
+                    )
                 }
 
                 // Card 4: Blood Glucose Target
