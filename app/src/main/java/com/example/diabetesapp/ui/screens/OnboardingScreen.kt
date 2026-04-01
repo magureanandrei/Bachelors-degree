@@ -6,6 +6,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,19 +15,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
-import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.diabetesapp.R
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.ActivityTutorialModal
 import com.example.diabetesapp.ui.components.CgmTutorialModal
@@ -70,11 +73,10 @@ private fun OnboardingWelcomeStep(onNext: () -> Unit) {
                 .background(Color(0xFF00897B), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.MedicalServices,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(52.dp)
+            Image(
+                painter = painterResource(id = R.drawable.app_icon),
+                contentDescription = "App logo",
+                modifier = Modifier.size(96.dp).clip(CircleShape)
             )
         }
 
