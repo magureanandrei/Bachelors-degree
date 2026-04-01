@@ -401,7 +401,7 @@ fun HeaderSection() {
 @Composable
 fun DisclaimerBanner() {
     Surface(
-        color = Color(0xFFFFF4E6),
+        color = Color(0xFFE0F2F1),
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -409,11 +409,11 @@ fun DisclaimerBanner() {
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF00897B), modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 "Educational Prototype: This app is for research purposes only.",
-                fontSize = 11.sp, color = Color(0xFFE65100), lineHeight = 14.sp
+                fontSize = 11.sp, color = Color(0xFF00695C), lineHeight = 14.sp
             )
         }
     }

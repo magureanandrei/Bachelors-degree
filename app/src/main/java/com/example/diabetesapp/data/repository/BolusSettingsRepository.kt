@@ -240,6 +240,9 @@ class BolusSettingsRepository(context: Context) {
         }
     }
 
+    fun hasCompletedOnboarding(): Boolean = prefs.getBoolean("has_completed_onboarding", false)
+    fun setOnboardingComplete() = prefs.edit().putBoolean("has_completed_onboarding", true).apply()
+
     companion object {
         @Volatile
         private var INSTANCE: BolusSettingsRepository? = null

@@ -42,7 +42,8 @@ import com.example.diabetesapp.ui.components.HourlyRateEditor
 @Composable
 fun BolusSettingsScreen(
     modifier: Modifier = Modifier,
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    showTopBar: Boolean = true
 ) {
     val context = LocalContext.current
     val repository = remember { BolusSettingsRepository.getInstance(context) }
@@ -88,30 +89,48 @@ fun BolusSettingsScreen(
                         .navigationBarsPadding() // Safely pushes above system controls
                         .padding(16.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            viewModel.saveSettings()
-                            if (viewModel.areAllFieldsValid()) {
-                                coroutineScope.launch {
-                                    delay(1500) // 1.5 seconds to show success message
-                                    onNavigateBack()
+                    if (showTopBar) {
+                        Button(
+                            onClick = {
+                                viewModel.saveSettings()
+                                if (viewModel.areAllFieldsValid()) {
+                                    coroutineScope.launch {
+                                        delay(1500) // 1.5 seconds to show success message
+                                        onNavigateBack()
+                                    }
                                 }
-                            }
-                        },
-                        enabled = viewModel.areAllFieldsValid(),
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF00897B),
-                            disabledContainerColor = Color.Gray
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = "Save Settings",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (viewModel.areAllFieldsValid()) Color.White else Color.LightGray
-                        )
+                            },
+                            enabled = viewModel.areAllFieldsValid(),
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00897B),
+                                disabledContainerColor = Color.Gray
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "Save Settings",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (viewModel.areAllFieldsValid()) Color.White else Color.LightGray
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                viewModel.saveSettings()
+                                onNavigateBack()
+                            },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "Continue →",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -125,34 +144,36 @@ fun BolusSettingsScreen(
                 .padding(paddingValues) // Prevents the content from hiding behind the sticky footer
         ) {
             // --- TOP BAR ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (showTopBar) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color(0xFF00897B)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color(0xFF00897B)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Bolus Calculator Settings",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Bolus Calculator Settings",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
-                    )
                 }
             }
 
@@ -455,6 +476,11 @@ fun BolusSettingsScreen(
                         hourlyErrors = uiState.icrErrors,
                         globalError = uiState.icrGlobalError
                     )
+                    Text(
+                        text = "How many grams of carbs 1 unit of insulin covers.",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
                 }
 
                 // Card 3: Sensitivity Factor (ISF) - Simple/Advanced Mode
@@ -488,6 +514,11 @@ fun BolusSettingsScreen(
                         onHourValueChange = { hour, value -> viewModel.updateIsfAtHour(hour, value) },
                         hourlyErrors = uiState.isfErrors,
                         globalError = uiState.isfGlobalError
+                    )
+                    Text(
+                        text = "How much 1 unit of insulin lowers your blood glucose (mg/dL).",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
                     )
                 }
 
