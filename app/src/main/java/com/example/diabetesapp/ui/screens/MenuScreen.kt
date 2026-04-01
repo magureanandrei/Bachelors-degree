@@ -3,8 +3,10 @@ package com.example.diabetesapp.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
@@ -51,6 +53,27 @@ fun MenuScreen(
         viewModel.refresh()
     }
 
+    // 3. CGM Integration — live status dot + tutorial modal
+    val infiniteTransition = rememberInfiniteTransition(label = "cgmPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "cgmPulseScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "cgmPulseAlpha"
+    )
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -65,89 +88,109 @@ fun MenuScreen(
             modifier = Modifier.padding(vertical = 8.dp)
         )
 
-        // 1. Therapy & Hardware Profile
-        MenuOptionCard(
-            title = "Therapy Profile",
-            subtitle = "Pump vs. MDI, CGM vs. Manual",
-            icon = Icons.Default.MedicalServices,
-            onClick = onNavigateToTherapyProfile
-        )
+        // Disclaimer card
+        Surface(
+            color = Color(0xFFE0F2F1),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    tint = Color(0xFF00897B),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Educational Prototype: This app is for research purposes only.",
+                    fontSize = 11.sp,
+                    color = Color(0xFF00695C),
+                    lineHeight = 14.sp
+                )
+            }
+        }
 
-        // 2. Bolus Settings
-        MenuOptionCard(
-            title = "Insulin Parameters",
-            subtitle = "ICR, ISF, Target BG",
-            icon = Icons.Default.Settings,
-            onClick = onNavigateToBolusSettings
-        )
+        // Section 1: Settings
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Settings",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF757575),
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
+            )
+            MenuOptionCard(
+                title = "Therapy Profile",
+                subtitle = "Pump vs. MDI, CGM vs. Manual",
+                icon = Icons.Default.MedicalServices,
+                onClick = onNavigateToTherapyProfile
+            )
+            MenuOptionCard(
+                title = "Insulin Parameters",
+                subtitle = "ICR, ISF, Target BG",
+                icon = Icons.Default.Settings,
+                onClick = onNavigateToBolusSettings
+            )
+        }
 
-        // 3. CGM Integration — live status dot + tutorial modal
-        val infiniteTransition = rememberInfiniteTransition(label = "cgmPulse")
-        val pulseScale by infiniteTransition.animateFloat(
-            initialValue = 1f,
-            targetValue = 2.5f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1200),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "cgmPulseScale"
-        )
-        val pulseAlpha by infiniteTransition.animateFloat(
-            initialValue = 0.8f,
-            targetValue = 0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1200),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "cgmPulseAlpha"
-        )
-
-        MenuOptionCard(
-            title = "CGM Integration",
-            subtitle = cgmStatusSubtitle(cgmStatus),
-            icon = Icons.Default.Sensors,
-            onClick = { showCgmModal = true },
-            trailingContent = {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
-                    if (cgmStatus !is CgmStatus.Disabled) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
+        // Section 2: Integrations
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Integrations",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF757575),
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
+            )
+            MenuOptionCard(
+                title = "CGM Integration",
+                subtitle = cgmStatusSubtitle(cgmStatus),
+                icon = Icons.Default.Sensors,
+                onClick = { showCgmModal = true },
+                trailingContent = {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
+                        if (cgmStatus !is CgmStatus.Disabled) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawCircle(
+                                    color = cgmStatusColor(cgmStatus).copy(alpha = pulseAlpha),
+                                    radius = 7.dp.toPx() * pulseScale
+                                )
+                            }
+                        }
+                        Canvas(modifier = Modifier.size(14.dp)) {
+                            drawCircle(color = cgmStatusColor(cgmStatus))
+                        }
+                    }
+                }
+            )
+            MenuOptionCard(
+                title = "Activity & Sports",
+                subtitle = if (activityStatus is ActivityStatus.Connected) "Health Connect connected" else "Health Connect not connected",
+                icon = Icons.AutoMirrored.Filled.DirectionsRun,
+                onClick = { showActivityModal = true },
+                trailingContent = {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
+                        if (activityStatus is ActivityStatus.Connected) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawCircle(
+                                    color = Color(0xFF4CAF50).copy(alpha = pulseAlpha),
+                                    radius = 7.dp.toPx() * pulseScale
+                                )
+                            }
+                        }
+                        Canvas(modifier = Modifier.size(14.dp)) {
                             drawCircle(
-                                color = cgmStatusColor(cgmStatus).copy(alpha = pulseAlpha),
-                                radius = 7.dp.toPx() * pulseScale // core radius = 7dp, scale it out
+                                color = if (activityStatus is ActivityStatus.Connected) Color(0xFF4CAF50) else Color(0xFFF44336)
                             )
                         }
                     }
-                    Canvas(modifier = Modifier.size(14.dp)) {
-                        drawCircle(color = cgmStatusColor(cgmStatus))
-                    }
                 }
-            }
-        )
-
-        // 4. Activity & Sports — Health Connect status dot
-        MenuOptionCard(
-            title = "Activity & Sports",
-            subtitle = if (activityStatus is ActivityStatus.Connected) "Health Connect connected" else "Health Connect not connected",
-            icon = Icons.AutoMirrored.Filled.DirectionsRun,
-            onClick = { showActivityModal = true },
-            trailingContent = {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
-                    if (activityStatus is ActivityStatus.Connected) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            drawCircle(
-                                color = Color(0xFF4CAF50).copy(alpha = pulseAlpha),
-                                radius = 7.dp.toPx() * pulseScale // core radius = 7dp, scale it out
-                            )
-                        }
-                    }
-                    Canvas(modifier = Modifier.size(14.dp)) {
-                        drawCircle(
-                            color = if (activityStatus is ActivityStatus.Connected) Color(0xFF4CAF50) else Color(0xFFF44336)
-                        )
-                    }
-                }
-            }
-        )
+            )
+        }
     }
 
     if (showCgmModal) {
