@@ -80,5 +80,6 @@ data class PatientContext(
 data class ClinicalDecision(
     val suggestedInsulinDose: Double,
     val suggestedRescueCarbs: Int,
-    val clinicalRationale: String // The explanation text to display & save to History
+    val clinicalRationale: String,
+    val breakdownSteps: List<com.example.diabetesapp.algorithm.BreakdownEntry> = emptyList()
 )
