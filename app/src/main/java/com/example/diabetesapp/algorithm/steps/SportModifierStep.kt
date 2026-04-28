@@ -16,6 +16,8 @@ import kotlin.math.min
  * Standard Pump temp basal: Zaharieva & Riddell 2017 (zaharieva2017insulin)
  * AID exercise target: EASD/ISPAD 2024 AID+PA position statement (moser2025use)
  * Late-onset hypo window: McMahon et al. 2007, Maran et al. 2010
+ * Meal/correction split: Zivkovic et al. 2026, Yardley et al. 2013
+ * Ketone threshold: ISPAD 2022 Exercise Chapter
  */
 class SportModifierStep : AlgorithmStep {
     override val name = "Sport Modifier"
@@ -30,6 +32,21 @@ class SportModifierStep : AlgorithmStep {
             result = result.addWarning("⚠️ No CGM: Check BG manually 30 mins into activity.")
         }
 
+        // Ketone check warning at very high BG (ISPAD 2022: ketones ≥1.5 mmol/L = exercise contraindicated)
+        if (context.currentBG > 300) {
+            result = result.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Check Ketones Before Exercise",
+                emoji = "🚨",
+                description = "BG exceeds 300 mg/dL. Check blood ketones before exercising. " +
+                    "If ketones are ≥1.5 mmol/L, exercise is contraindicated due to the risk of " +
+                    "diabetic ketoacidosis (DKA). If ketones are 0.6–1.4 mmol/L, postpone exercise " +
+                    "until corrective insulin is administered.",
+                effect = Effect.WARNING,
+                runningTotal = result.currentDose
+            ))
+        }
+
         val isFuture = context.minutesUntilSport >= 0
         val absMinutes = abs(context.minutesUntilSport)
 
@@ -39,6 +56,10 @@ class SportModifierStep : AlgorithmStep {
             var reductionLabel = ""
 
             when (context.sportType) {
+                "Walking" -> {
+                    reductionPercent = 0.25
+                    reductionLabel = "Walking: 25% reduction."
+                }
                 "Anaerobic" -> {
                     reductionPercent = 0.10
                     reductionLabel = "Anaerobic: 10% reduction."
@@ -57,11 +78,10 @@ class SportModifierStep : AlgorithmStep {
                 }
             }
 
-            // Duration modifier (>45 mins)
-            var durationExtra = 0.0
+            // Duration modifier (>45 mins) — applies to all sport types including Walking
             if (context.sportDurationMins > 45) {
                 val extraTime = context.sportDurationMins - 45
-                durationExtra = min(0.20, (extraTime / 15.0) * 0.10)
+                val durationExtra = min(0.20, (extraTime / 15.0) * 0.10)
                 reductionPercent += durationExtra
                 reductionLabel += " Duration >45m: +${String.format("%.0f", durationExtra * 100)}% extra."
             }
@@ -69,19 +89,111 @@ class SportModifierStep : AlgorithmStep {
             // Cap at 90%
             reductionPercent = min(0.90, reductionPercent)
 
-            val reductionAmount = state.currentDose * reductionPercent
-            val newDose = state.currentDose * (1.0 - reductionPercent)
+            val mealBolus = state.metadata["mealBolus"] as? Double ?: 0.0
+            val correctionBolus = state.metadata["correctionBolus"] as? Double ?: 0.0
 
-            result = result.addEntry(BreakdownEntry(
-                stepName = name,
-                label = "Sport Reduction",
-                emoji = "🏃",
-                description = "🏃 $reductionLabel",
-                effect = Effect.DECREASE,
-                percentChange = -reductionPercent,
-                valueChange = -reductionAmount,
-                runningTotal = newDose
-            )).copy(currentDose = newDose)
+            if (mealBolus > 0.0 || correctionBolus > 0.0) {
+                // Apply T1DEXIP reduction to meal component only (Moser et al. 2020)
+                val mealReduction = mealBolus * reductionPercent
+                val reducedMeal = mealBolus - mealReduction
+
+                // Handle correction separately based on sport type and BG (Zivkovic et al. 2026)
+                val reducedCorrection: Double
+                when {
+                    // Aerobic/Walking + BG 140–250: skip correction — exercise is the correction
+                    (context.sportType == "Aerobic" || context.sportType == "Walking") &&
+                        correctionBolus > 0 &&
+                        context.currentBG in 140.0..250.0 -> {
+                        reducedCorrection = 0.0
+                        result = result.addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Correction Skipped (Aerobic)",
+                            emoji = "🏃",
+                            description = "Correction withheld during aerobic exercise. The expected " +
+                                "glucose-lowering effect of the activity will serve as a natural correction.",
+                            effect = Effect.NEUTRAL,
+                            runningTotal = result.currentDose
+                        ))
+                    }
+
+                    // Aerobic/Walking + BG > 250: 50% correction (ISPAD 2022: max 50% post-exercise)
+                    (context.sportType == "Aerobic" || context.sportType == "Walking") &&
+                        correctionBolus > 0 &&
+                        context.currentBG > 250 -> {
+                        reducedCorrection = correctionBolus * 0.50
+                        result = result.addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Reduced Correction (High BG + Aerobic)",
+                            emoji = "⚠️",
+                            description = "BG is very high. A 50% correction " +
+                                "(${String.format("%.2f", reducedCorrection)}U) is applied alongside " +
+                                "the exercise. Check for ketones if BG exceeds 300 mg/dL.",
+                            effect = Effect.DECREASE,
+                            runningTotal = result.currentDose
+                        ))
+                    }
+
+                    // Mixed: 50% correction — variable BG response
+                    context.sportType == "Mixed" && correctionBolus > 0 -> {
+                        reducedCorrection = correctionBolus * 0.50
+                        result = result.addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Reduced Correction (Mixed Exercise)",
+                            emoji = "🏋️",
+                            description = "Correction reduced by 50% during mixed exercise. Mixed activity " +
+                                "has variable effects on blood glucose.",
+                            effect = Effect.DECREASE,
+                            runningTotal = result.currentDose
+                        ))
+                    }
+
+                    // Anaerobic: full correction — catecholamine-driven BG rise (Yardley et al. 2013)
+                    context.sportType == "Anaerobic" && correctionBolus > 0 -> {
+                        reducedCorrection = correctionBolus
+                        result = result.addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Full Correction (Anaerobic)",
+                            emoji = "🏋️",
+                            description = "Full correction maintained during anaerobic exercise. " +
+                                "Resistance training does not reliably lower blood glucose and may " +
+                                "cause transient increases.",
+                            effect = Effect.NEUTRAL,
+                            runningTotal = result.currentDose
+                        ))
+                    }
+
+                    else -> reducedCorrection = correctionBolus
+                }
+
+                val newDose = reducedMeal + reducedCorrection
+                val totalReduction = state.currentDose - newDose
+
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Sport Reduction",
+                    emoji = "🏃",
+                    description = "🏃 $reductionLabel Meal component: -${String.format("%.2f", mealReduction)}U.",
+                    effect = Effect.DECREASE,
+                    percentChange = -reductionPercent,
+                    valueChange = -totalReduction,
+                    runningTotal = newDose
+                )).copy(currentDose = newDose)
+            } else {
+                // Fallback: metadata not populated — apply reduction to total dose (no regression)
+                val reductionAmount = state.currentDose * reductionPercent
+                val newDose = state.currentDose * (1.0 - reductionPercent)
+
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Sport Reduction",
+                    emoji = "🏃",
+                    description = "🏃 $reductionLabel",
+                    effect = Effect.DECREASE,
+                    percentChange = -reductionPercent,
+                    valueChange = -reductionAmount,
+                    runningTotal = newDose
+                )).copy(currentDose = newDose)
+            }
         }
 
         // C. Therapy-specific exercise strategy advice
@@ -92,8 +204,9 @@ class SportModifierStep : AlgorithmStep {
                 ) {
                     val carbs = when (context.sportType) {
                         "Aerobic" -> 20
+                        "Walking" -> 15
                         "Mixed" -> 15
-                        else -> 10
+                        else -> 10 // Anaerobic
                     }
                     result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, carbs))
                         .addEntry(BreakdownEntry(
@@ -107,7 +220,7 @@ class SportModifierStep : AlgorithmStep {
                             runningTotal = result.currentDose
                         ))
                 } else if (context.currentBG >= 90.0 && context.currentBG <= 125.0
-                    && context.sportType == "Aerobic"
+                    && (context.sportType == "Aerobic" || context.sportType == "Walking")
                     && (isFuture || absMinutes <= 5)
                 ) {
                     result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 15))
@@ -149,7 +262,10 @@ class SportModifierStep : AlgorithmStep {
                 if (result.currentDose < 0.1 && context.currentBG > 0 && context.currentBG < 125
                     && (isFuture || absMinutes <= 5)
                 ) {
-                    val carbs = if (context.sportType == "Aerobic") 15 else 10
+                    val carbs = when (context.sportType) {
+                        "Aerobic", "Walking" -> 15
+                        else -> 10
+                    }
                     result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, carbs))
                         .addEntry(BreakdownEntry(
                             stepName = name,
@@ -189,7 +305,7 @@ class SportModifierStep : AlgorithmStep {
             }
         }
 
-        // D. Post-sport / late-onset warning
+        // D. Post-sport / late-onset warning (severity based on sport type, not time of day — Zivkovic 2026)
         if (!isFuture) {
             if (context.currentBG > 0 && context.currentBG < 80) {
                 result = result.copy(rescueCarbs = 15)
@@ -199,11 +315,18 @@ class SportModifierStep : AlgorithmStep {
                         description = "⚠️ Post-workout Low. Consume 15g fast carbs immediately.",
                         effect = Effect.WARNING, runningTotal = result.currentDose
                     ))
-            } else if (context.sportType == "Aerobic" || context.sportType == "Mixed"
-                || context.sportDurationMins > 45) {
-                result = result.addWarning(
-                    "⚠️ Insight: Risk of Late-Onset Hypoglycemia (7-11h window). Consider bedtime snack or reduced night basal."
-                )
+            } else if (context.sportDurationMins >= 45 ||
+                context.sportType == "Aerobic" ||
+                context.sportType == "Anaerobic" ||
+                context.sportType == "Mixed") {
+                val warningText = if (context.sportType == "Walking") {
+                    "⚠️ Moderate risk of delayed hypoglycemia. Walking has a lower nocturnal hypo risk " +
+                        "than structured exercise, but monitor glucose before bedtime."
+                } else {
+                    "⚠️ Risk of Late-Onset Hypoglycemia (7-11h window). Consider a bedtime snack with " +
+                        "protein and complex carbohydrates, or a 20% reduction in overnight basal insulin."
+                }
+                result = result.addWarning(warningText)
             }
         }
 
