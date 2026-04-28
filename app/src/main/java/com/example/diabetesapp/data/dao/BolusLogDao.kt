@@ -38,5 +38,8 @@ interface BolusLogDao {
     @Query("SELECT * FROM bolus_log WHERE eventType = 'BASAL_INSULIN' AND timestamp >= :since ORDER BY timestamp DESC")
     suspend fun getBasalLogsSince(since: Long): List<BolusLog>
 
+    @Query("SELECT * FROM bolus_log WHERE eventType = 'SPORT' AND status = 'COMPLETED' AND timestamp >= :since")
+    suspend fun getCompletedSportLogsSince(since: Long): List<BolusLog>
+
 }
 

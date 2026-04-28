@@ -22,7 +22,8 @@ object AlgorithmEngine {
             CgmTrendStep(),          // 4. CGM velocity modifiers (AID-aware)
             SportModifierStep(),     // 5. Exercise reductions + therapy-specific advice
             BasalAwarenessStep(),    // 6. MDI basal warnings
-            MaxBolusCapStep()        // 7. Safety cap
+            NighttimeSafetyStep(),   // 7. Nighttime correction reduction + overnight warnings
+            MaxBolusCapStep()        // 8. Safety cap
         )
     )
 

@@ -22,8 +22,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 enum class InputMode { MANUAL, CALCULATE }
@@ -260,48 +262,59 @@ class CalculateBolusViewModel(
     }
 
     private fun performCalculation(showDialog: Boolean) {
-        val state = _inputState.value
-        val currentSettings = settings.value
+        viewModelScope.launch {
+            val exercisedToday = withContext(Dispatchers.IO) {
+                val todayStartMillis = LocalDate.now()
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+                repository.getCompletedSportLogsSince(todayStartMillis).isNotEmpty()
+            }
 
-        val cgmTrend = if (currentSettings.isCgmEnabled)
-            CgmTrend.fromString(state.cgmTrendString)
-        else
-            CgmTrend.NONE
+            val state = _inputState.value
+            val currentSettings = settings.value
 
-        val context = PatientContext(
-            therapyType = currentSettings.therapyTypeEnum,
-            bolusSettings = currentSettings,
-            currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
-            hasCGM = currentSettings.isCgmEnabled,
-            cgmTrend = cgmTrend,
-            activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
-            plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
-            isDoingSport = state.isSportModeActive,
-            sportType = state.sportType,
-            sportIntensity = state.sportIntensityValue.toInt(),
-            sportDurationMins = state.sportDurationMinutes.toInt(),
-            minutesUntilSport = state.minutesUntilSport.toInt(),
-            isHighStress = state.selectedFactor == "Stress",
-            isIllness = state.selectedFactor == "Illness",
-            isExtremeHeat = state.selectedFactor == "Heat",
-            timeOfDay = LocalTime.now(),
-            dailySteps = 0L,
-            basalDoseToday = 0.0,  // TODO: sum from DB in future iteration
-            basalDurationHours = currentSettings.basalDurationHours,
-            hasBasalConfigured = currentSettings.hasBasalConfigured
-        )
+            val cgmTrend = if (currentSettings.isCgmEnabled)
+                CgmTrend.fromString(state.cgmTrendString)
+            else
+                CgmTrend.NONE
 
-        val decision = AlgorithmEngine.calculateClinicalAdvice(context)
+            val context = PatientContext(
+                therapyType = currentSettings.therapyTypeEnum,
+                bolusSettings = currentSettings,
+                currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
+                hasCGM = currentSettings.isCgmEnabled,
+                cgmTrend = cgmTrend,
+                activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
+                plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
+                isDoingSport = state.isSportModeActive,
+                sportType = state.sportType,
+                sportIntensity = state.sportIntensityValue.toInt(),
+                sportDurationMins = state.sportDurationMinutes.toInt(),
+                minutesUntilSport = state.minutesUntilSport.toInt(),
+                isHighStress = state.selectedFactor == "Stress",
+                isIllness = state.selectedFactor == "Illness",
+                isExtremeHeat = state.selectedFactor == "Heat",
+                timeOfDay = LocalTime.now(),
+                dailySteps = 0L,
+                basalDoseToday = 0.0,  // TODO: sum from DB in future iteration
+                basalDurationHours = currentSettings.basalDurationHours,
+                hasBasalConfigured = currentSettings.hasBasalConfigured,
+                exercisedToday = exercisedToday
+            )
 
-        _inputState.value = _inputState.value.copy(
-            standardDose = (context.plannedCarbs / currentSettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf()),
-            calculatedDose = decision.suggestedInsulinDose,
-            userAdjustedDose = decision.suggestedInsulinDose,
-            sportReductionLog = decision.clinicalRationale,
-            warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
-            showResult = true,
-            showResultDialog = showDialog
-        )
+            val decision = AlgorithmEngine.calculateClinicalAdvice(context)
+
+            _inputState.value = _inputState.value.copy(
+                standardDose = (context.plannedCarbs / currentSettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf()),
+                calculatedDose = decision.suggestedInsulinDose,
+                userAdjustedDose = decision.suggestedInsulinDose,
+                sportReductionLog = decision.clinicalRationale,
+                warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
+                showResult = true,
+                showResultDialog = showDialog
+            )
+        }
     }
 
     fun logEntry(context: android.content.Context) {

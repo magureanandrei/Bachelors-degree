@@ -72,7 +72,10 @@ data class PatientContext(
     val dailySteps: Long = 0L,
     val basalDoseToday: Double = 0.0,      // total long-acting units injected today
     val basalDurationHours: Float = 0f,    // duration of their long-acting insulin
-    val hasBasalConfigured: Boolean = false // total long-acting units injected today (MDI only)
+    val hasBasalConfigured: Boolean = false, // total long-acting units injected today (MDI only)
+
+    // 6. Nighttime Safety
+    val exercisedToday: Boolean = false    // any completed SPORT log today
 )
 
 // --- THE OUTPUT: What the algorithm gives back to the UI ---
