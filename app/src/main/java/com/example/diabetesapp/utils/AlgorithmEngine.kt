@@ -15,11 +15,14 @@ object AlgorithmEngine {
 
     private val pipeline = AlgorithmPipeline(
         listOf(
-            BaselineStep(),          // 1. Meal + Correction bolus
+            HypoGuardStep(),         // 0. BG below hypo limit — warn before any calculation
+            BaselineStep(),          // 1. Meal + Correction bolus (therapy-aware)
             OutsideFactorsStep(),    // 2. Illness/Stress/Heat multipliers
             IobDeductionStep(),      // 3. Subtract active insulin
-            CgmTrendStep(),          // 4. CGM velocity modifiers
-            SportModifierStep()      // 5. Exercise reductions + carb advice
+            CgmTrendStep(),          // 4. CGM velocity modifiers (AID-aware)
+            SportModifierStep(),     // 5. Exercise reductions + therapy-specific advice
+            BasalAwarenessStep(),    // 6. MDI basal warnings
+            MaxBolusCapStep()        // 7. Safety cap
         )
     )
 

@@ -9,10 +9,13 @@ import kotlin.math.min
 /**
  * Step 5: Sport Modifiers & Carb Suggestions
  * Handles insulin reduction during exercise and pre/post-sport safety advice.
+ * Section C is therapy-aware: MDI, Standard Pump, and AID receive distinct strategies.
  *
  * Sport reduction percentages: T1DEXIP study / ISPAD Exercise Guidelines (Moser et al. 2020)
+ * MDI basal constraint: ISPAD 2022 Exercise Chapter (adolfsson2022ispad)
+ * Standard Pump temp basal: Zaharieva & Riddell 2017 (zaharieva2017insulin)
+ * AID exercise target: EASD/ISPAD 2024 AID+PA position statement (moser2025use)
  * Late-onset hypo window: McMahon et al. 2007, Maran et al. 2010
- * Rescue carb amounts: ADA Standards of Care ("rule of 15")
  */
 class SportModifierStep : AlgorithmStep {
     override val name = "Sport Modifier"
@@ -81,66 +84,106 @@ class SportModifierStep : AlgorithmStep {
             )).copy(currentDose = newDose)
         }
 
-        // C. Pre-sport carb / pump therapy advice
-        if (result.currentDose < 0.1 && context.currentBG > 0 && context.currentBG < 125
-            && (isFuture || absMinutes <= 5)
-        ) {
-            if (context.currentBG < 90) {
-                result = result.copy(rescueCarbs = 20)
-                var carbAdvice = "⚠️ Low BG (${context.currentBG.toInt()}). Eat 20g fast-acting carbs."
-                carbAdvice += if (absMinutes > 30) " Since sport is in ${absMinutes}m, add complex carbs."
-                else " Wait 15m before starting."
+        // C. Therapy-specific exercise strategy advice
+        when (context.therapyType) {
+            TherapyType.MDI -> {
+                if (result.currentDose < 0.1 && context.currentBG > 0 && context.currentBG < 125
+                    && (isFuture || absMinutes <= 5)
+                ) {
+                    val carbs = when (context.sportType) {
+                        "Aerobic" -> 20
+                        "Mixed" -> 15
+                        else -> 10
+                    }
+                    result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, carbs))
+                        .addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Pre-Exercise Carbohydrates (MDI)",
+                            emoji = "🍞",
+                            description = "Your long-acting basal insulin is still active and cannot be " +
+                                "suspended during exercise. Consume ${carbs}g of carbohydrates before " +
+                                "starting ${context.sportType} activity to prevent hypoglycemia.",
+                            effect = Effect.WARNING,
+                            runningTotal = result.currentDose
+                        ))
+                } else if (context.currentBG >= 90.0 && context.currentBG <= 125.0
+                    && context.sportType == "Aerobic"
+                    && (isFuture || absMinutes <= 5)
+                ) {
+                    result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 15))
+                        .addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Pre-Exercise Carbohydrates (MDI)",
+                            emoji = "🍞",
+                            description = "BG is in a borderline range for aerobic exercise. With active " +
+                                "basal insulin that cannot be reduced, consuming 15g carbohydrates is recommended.",
+                            effect = Effect.NEUTRAL,
+                            runningTotal = result.currentDose
+                        ))
+                }
+
+                if (context.sportDurationMins >= 45) {
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Basal Dose Adjustment",
+                        emoji = "💉",
+                        description = "Consider reducing your next basal insulin dose by approximately 20% " +
+                            "to reduce the risk of delayed nocturnal hypoglycemia.",
+                        effect = Effect.NEUTRAL,
+                        runningTotal = result.currentDose
+                    ))
+                }
+            }
+
+            TherapyType.PUMP_STANDARD -> {
                 result = result.addEntry(BreakdownEntry(
-                    stepName = name, label = "Pre-Sport Carbs (Low BG)", emoji = "⚠️",
-                    description = carbAdvice, effect = Effect.WARNING,
+                    stepName = name,
+                    label = "Temp Basal Recommendation",
+                    emoji = "⚙️",
+                    description = "Set a temporary basal rate of 50% starting 60–90 minutes before exercise " +
+                        "and maintain throughout the activity. Post-exercise, consider a 20% basal reduction for 6 hours.",
+                    effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
                 ))
-            } else { // BG 90-125
-                if (context.sportType == "Aerobic") {
-                    if (absMinutes > 30) {
-                        when (context.therapyType) {
-                            TherapyType.MDI -> {
-                                result = result.copy(rescueCarbs = 15)
-                                    .addEntry(BreakdownEntry(
-                                        stepName = name, label = "Pre-Sport Carbs (MDI)",
-                                        emoji = "💡",
-                                        description = "💡 Pens: Aerobic will drop BG. Eat 15g complex carbs now.",
-                                        effect = Effect.WARNING, runningTotal = result.currentDose
-                                    ))
-                            }
-                            TherapyType.PUMP_STANDARD -> {
-                                result = result.addEntry(BreakdownEntry(
-                                    stepName = name, label = "Temp Basal Advice",
-                                    emoji = "💡",
-                                    description = "💡 Pump: Set 50% Temp Basal now. (Or eat 15g carbs).",
-                                    effect = Effect.NEUTRAL, runningTotal = result.currentDose
-                                ))
-                            }
-                            TherapyType.PUMP_AID -> {
-                                result = result.addEntry(BreakdownEntry(
-                                    stepName = name, label = "AID Exercise Target",
-                                    emoji = "💡",
-                                    description = "💡 AID Pump: Set 'Exercise Target' now to suspend micro-boluses.",
-                                    effect = Effect.NEUTRAL, runningTotal = result.currentDose
-                                ))
-                            }
-                        }
-                    } else {
-                        result = result.copy(rescueCarbs = 15)
-                            .addEntry(BreakdownEntry(
-                                stepName = name, label = "Pre-Sport Carbs (Aerobic)",
-                                emoji = "⚠️",
-                                description = "⚠️ Aerobic drops BG fast. Eat 15g fast carbs before starting.",
-                                effect = Effect.WARNING, runningTotal = result.currentDose
-                            ))
-                    }
-                } else if (context.sportType == "Mixed") {
-                    result = result.copy(rescueCarbs = 10)
+
+                if (result.currentDose < 0.1 && context.currentBG > 0 && context.currentBG < 125
+                    && (isFuture || absMinutes <= 5)
+                ) {
+                    val carbs = if (context.sportType == "Aerobic") 15 else 10
+                    result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, carbs))
                         .addEntry(BreakdownEntry(
-                            stepName = name, label = "Pre-Sport Carbs (Mixed)",
-                            emoji = "💡",
-                            description = "💡 Eat 10g carbs to stabilize BG for mixed activity.",
-                            effect = Effect.WARNING, runningTotal = result.currentDose
+                            stepName = name,
+                            label = "Pre-Exercise Carbohydrates",
+                            emoji = "🍞",
+                            description = "Consider consuming ${carbs}g carbohydrates in addition to " +
+                                "setting a reduced temp basal.",
+                            effect = Effect.NEUTRAL,
+                            runningTotal = result.currentDose
+                        ))
+                }
+            }
+
+            TherapyType.PUMP_AID -> {
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Activate Exercise Target",
+                    emoji = "🎯",
+                    description = "Activate your pump's Exercise/Activity target 1–2 hours before planned activity. " +
+                        "This raises your glucose target to 150 mg/dL and suspends automatic correction boluses.",
+                    effect = Effect.NEUTRAL,
+                    runningTotal = result.currentDose
+                ))
+
+                if (context.currentBG > 0 && context.currentBG < 100) {
+                    result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 10))
+                        .addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Pre-Exercise Carbohydrates",
+                            emoji = "🍞",
+                            description = "Despite automated insulin adjustments, your pump cannot provide " +
+                                "carbohydrates. Consider 10g of fast-acting carbs before starting exercise.",
+                            effect = Effect.NEUTRAL,
+                            runningTotal = result.currentDose
                         ))
                 }
             }
