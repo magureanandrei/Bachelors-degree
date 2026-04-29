@@ -1,7 +1,14 @@
 package com.example.diabetesapp.utils
 
 import com.example.diabetesapp.algorithm.AlgorithmPipeline
-import com.example.diabetesapp.algorithm.steps.*
+import com.example.diabetesapp.algorithm.steps.BasalAwarenessStep
+import com.example.diabetesapp.algorithm.steps.BaselineStep
+import com.example.diabetesapp.algorithm.steps.CgmTrendStep
+import com.example.diabetesapp.algorithm.steps.ContextualModifierStep
+import com.example.diabetesapp.algorithm.steps.HypoGuardStep
+import com.example.diabetesapp.algorithm.steps.IobDeductionStep
+import com.example.diabetesapp.algorithm.steps.MaxBolusCapStep
+import com.example.diabetesapp.algorithm.steps.NighttimeSafetyStep
 import com.example.diabetesapp.data.models.ClinicalDecision
 import com.example.diabetesapp.data.models.PatientContext
 
@@ -15,15 +22,14 @@ object AlgorithmEngine {
 
     private val pipeline = AlgorithmPipeline(
         listOf(
-            HypoGuardStep(),         // 0. BG below hypo limit — warn before any calculation
-            BaselineStep(),          // 1. Meal + Correction bolus (therapy-aware)
-            OutsideFactorsStep(),    // 2. Illness/Stress/Heat multipliers
-            IobDeductionStep(),      // 3. Subtract active insulin
-            CgmTrendStep(),          // 4. CGM velocity modifiers (AID-aware)
-            SportModifierStep(),     // 5. Exercise reductions + therapy-specific advice
-            BasalAwarenessStep(),    // 6. MDI basal warnings
-            NighttimeSafetyStep(),   // 7. Nighttime correction reduction + overnight warnings
-            MaxBolusCapStep()        // 8. Safety cap
+            HypoGuardStep(),              // 0. Immediate BG safety
+            BaselineStep(),               // 1. Raw meal + correction (therapy-aware)
+            IobDeductionStep(),           // 2. Subtract active insulin
+            CgmTrendStep(),               // 3. Real-time BG trend
+            ContextualModifierStep(),     // 4. ONE dominant modifier (exercise/illness/stress/heat)
+            NighttimeSafetyStep(),        // 5. Nighttime warnings (no dose change)
+            BasalAwarenessStep(),         // 6. MDI basal warnings
+            MaxBolusCapStep()             // 7. Safety cap
         )
     )
 
