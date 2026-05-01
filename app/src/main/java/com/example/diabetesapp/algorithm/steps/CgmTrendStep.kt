@@ -17,12 +17,14 @@ class CgmTrendStep : AlgorithmStep {
     // Source: Dexcom trend arrow specification, Aleppo et al. 2017
     private fun anticipatedChange(trend: CgmTrend): Double {
         return when (trend) {
-            CgmTrend.DOUBLE_UP   ->  90.0
-            CgmTrend.SINGLE_UP   ->  60.0
-            CgmTrend.FLAT        ->   0.0
-            CgmTrend.SINGLE_DOWN -> -60.0
-            CgmTrend.DOUBLE_DOWN -> -90.0
-            CgmTrend.NONE        ->   0.0
+            CgmTrend.DOUBLE_UP       ->  90.0
+            CgmTrend.SINGLE_UP       ->  60.0
+            CgmTrend.FORTY_FIVE_UP   ->  30.0
+            CgmTrend.FLAT            ->   0.0
+            CgmTrend.FORTY_FIVE_DOWN -> -30.0
+            CgmTrend.SINGLE_DOWN     -> -60.0
+            CgmTrend.DOUBLE_DOWN     -> -90.0
+            CgmTrend.NONE            ->   0.0
         }
     }
 
@@ -31,12 +33,14 @@ class CgmTrendStep : AlgorithmStep {
 
     private fun trendEmoji(trend: CgmTrend): String {
         return when (trend) {
-            CgmTrend.DOUBLE_UP   -> "↑↑"
-            CgmTrend.SINGLE_UP   -> "↑"
-            CgmTrend.FLAT        -> "→"
-            CgmTrend.SINGLE_DOWN -> "↓"
-            CgmTrend.DOUBLE_DOWN -> "↓↓"
-            CgmTrend.NONE        -> ""
+            CgmTrend.DOUBLE_UP       -> "↑↑"
+            CgmTrend.SINGLE_UP       -> "↑"
+            CgmTrend.FORTY_FIVE_UP   -> "↗"
+            CgmTrend.FLAT            -> "→"
+            CgmTrend.FORTY_FIVE_DOWN -> "↘"
+            CgmTrend.SINGLE_DOWN     -> "↓"
+            CgmTrend.DOUBLE_DOWN     -> "↓↓"
+            CgmTrend.NONE            -> ""
         }
     }
 

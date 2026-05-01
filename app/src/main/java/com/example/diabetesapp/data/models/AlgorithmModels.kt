@@ -25,15 +25,16 @@ enum class TherapyType {
  * Defines the velocity of blood glucose changes from a Continuous Glucose Monitor.
  */
 enum class CgmTrend {
-    DOUBLE_UP, SINGLE_UP, FLAT, SINGLE_DOWN, DOUBLE_DOWN, NONE;
+    DOUBLE_UP, SINGLE_UP, FORTY_FIVE_UP, FLAT, FORTY_FIVE_DOWN, SINGLE_DOWN, DOUBLE_DOWN, NONE;
 
     companion object {
         fun fromString(value: String): CgmTrend = when (value) {
             "↑↑" -> DOUBLE_UP
-            "↑" -> SINGLE_UP
-            "→" -> FLAT
-            "↘" -> SINGLE_DOWN
-            "↓" -> SINGLE_DOWN
+            "↑"  -> SINGLE_UP
+            "↗"  -> FORTY_FIVE_UP
+            "→"  -> FLAT
+            "↘"  -> FORTY_FIVE_DOWN
+            "↓"  -> SINGLE_DOWN
             "↓↓" -> DOUBLE_DOWN
             else -> NONE
         }
