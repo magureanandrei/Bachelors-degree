@@ -263,13 +263,25 @@ class CalculateBolusViewModel(
 
     private fun performCalculation(showDialog: Boolean) {
         viewModelScope.launch {
-            val exercisedToday = withContext(Dispatchers.IO) {
-                val todayStartMillis = LocalDate.now()
+            val lastSport = withContext(Dispatchers.IO) {
+                val todayStart = LocalDate.now()
                     .atStartOfDay(ZoneId.systemDefault())
                     .toInstant()
                     .toEpochMilli()
-                repository.getCompletedSportLogsSince(todayStartMillis).isNotEmpty()
+                val recentSportLogs = repository.getCompletedSportLogsSince(todayStart)
+                recentSportLogs
+                    .sortedWith(compareByDescending<BolusLog> {
+                        if (it.sportType == "Walking") 0 else 1
+                    }.thenByDescending { it.sportDuration ?: 0f })
+                    .firstOrNull()
             }
+
+            val hoursSinceLastExercise = if (lastSport != null) {
+                (System.currentTimeMillis() - lastSport.timestamp) / (1000f * 60f * 60f)
+            } else -1f
+
+            val lastExerciseSportType = lastSport?.sportType ?: ""
+            val lastExerciseDurationMins = lastSport?.sportDuration?.toInt() ?: 0
 
             val state = _inputState.value
             val currentSettings = settings.value
@@ -300,7 +312,9 @@ class CalculateBolusViewModel(
                 basalDoseToday = 0.0,  // TODO: sum from DB in future iteration
                 basalDurationHours = currentSettings.basalDurationHours,
                 hasBasalConfigured = currentSettings.hasBasalConfigured,
-                exercisedToday = exercisedToday
+                hoursSinceLastExercise = hoursSinceLastExercise,
+                lastExerciseSportType = lastExerciseSportType,
+                lastExerciseDurationMins = lastExerciseDurationMins
             )
 
             val decision = AlgorithmEngine.calculateClinicalAdvice(context)

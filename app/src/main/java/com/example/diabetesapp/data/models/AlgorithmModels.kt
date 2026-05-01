@@ -74,9 +74,13 @@ data class PatientContext(
     val basalDurationHours: Float = 0f,    // duration of their long-acting insulin
     val hasBasalConfigured: Boolean = false, // total long-acting units injected today (MDI only)
 
-    // 6. Nighttime Safety
-    val exercisedToday: Boolean = false    // any completed SPORT log today
-)
+    // 6. Exercise Recovery
+    val hoursSinceLastExercise: Float = -1f,    // -1 = no exercise today
+    val lastExerciseSportType: String = "",      // "Walking", "Aerobic", "Mixed", "Anaerobic"
+    val lastExerciseDurationMins: Int = 0
+) {
+    val exercisedToday: Boolean get() = hoursSinceLastExercise in 0f..24f
+}
 
 // --- THE OUTPUT: What the algorithm gives back to the UI ---
 

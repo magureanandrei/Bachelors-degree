@@ -8,11 +8,12 @@ import com.example.diabetesapp.data.models.TherapyType
  * Step 4: Contextual Modifier (Dominant Architecture)
  * Replaces OutsideFactorsStep + SportModifierStep + PostExerciseSensitivityStep.
  *
- * Priority resolution: Active Exercise > Exercise Recovery > Illness > Stress > Heat
+ * Priority resolution: Active Exercise > Exercise Recovery > Walk Recovery > Illness > Stress > Heat
  * Only ONE modifier applies to the dose. All other active conditions generate warnings.
  *
  * Exercise percentages: T1DEXIP / ISPAD 2022 (Moser et al.), AID flat: Moser 2025
  * Recovery reductions: Diabetologia 2023 (meal 50%), ISPAD 2022 (correction 50%)
+ * Walking recovery: Zivkovic 2026 proportional tiers
  * Illness: ISPAD Sick Day Guidelines (+25%)
  * Stress: Lloyd 1999, Diep 2012 (+15%)
  * Heat: Koivisto 1981 (-10%)
@@ -20,43 +21,51 @@ import com.example.diabetesapp.data.models.TherapyType
 class ContextualModifierStep : AlgorithmStep {
     override val name = "Contextual Modifier"
 
-    private enum class ExercisePhase { NONE, ACTIVE, RECOVERY }
-
     private enum class DominantModifier {
-        ACTIVE_EXERCISE, EXERCISE_RECOVERY, ILLNESS, STRESS, HEAT, NONE
+        ACTIVE_EXERCISE,     // Priority 1
+        EXERCISE_RECOVERY,   // Priority 2: structured exercise 0-6h
+        WALK_RECOVERY,       // Priority 3: walking recovery (shorter windows)
+        ILLNESS,             // Priority 4
+        STRESS,              // Priority 5
+        HEAT,                // Priority 6
+        NONE
     }
 
-    private fun resolveDominant(context: PatientContext): DominantModifier {
-        val exercisePhase = when {
-            context.isDoingSport -> ExercisePhase.ACTIVE
-            context.exercisedToday && !context.isDoingSport -> ExercisePhase.RECOVERY
-            else -> ExercisePhase.NONE
-        }
-        return when {
-            exercisePhase == ExercisePhase.ACTIVE -> DominantModifier.ACTIVE_EXERCISE
-            exercisePhase == ExercisePhase.RECOVERY -> DominantModifier.EXERCISE_RECOVERY
-            context.isIllness -> DominantModifier.ILLNESS
-            context.isHighStress -> DominantModifier.STRESS
-            context.isExtremeHeat -> DominantModifier.HEAT
-            else -> DominantModifier.NONE
+    private fun resolveDominant(context: PatientContext, status: PatientStatus): DominantModifier {
+        return when (status.exercisePhase) {
+            ExercisePhase.ACTIVE -> DominantModifier.ACTIVE_EXERCISE
+            ExercisePhase.EXERCISE_RECOVERY -> DominantModifier.EXERCISE_RECOVERY
+            ExercisePhase.WALK_RECOVERY -> DominantModifier.WALK_RECOVERY
+            ExercisePhase.NONE -> when {
+                context.isIllness -> DominantModifier.ILLNESS
+                context.isHighStress -> DominantModifier.STRESS
+                context.isExtremeHeat -> DominantModifier.HEAT
+                else -> DominantModifier.NONE
+            }
         }
     }
 
     override fun apply(state: CalculationState, context: PatientContext): CalculationState {
-        val dominant = resolveDominant(context)
-        var result = when (dominant) {
-            DominantModifier.ACTIVE_EXERCISE -> applyActiveExercise(state, context)
-            DominantModifier.EXERCISE_RECOVERY -> applyExerciseRecovery(state, context)
-            DominantModifier.ILLNESS -> applyIllness(state, context)
-            DominantModifier.STRESS -> applyStress(state, context)
-            DominantModifier.HEAT -> applyHeat(state, context)
-            DominantModifier.NONE -> state
+        val status = StatusResolver.resolve(context)
+        var result = state.copy(
+            metadata = state.metadata + ("patientStatus" to status)
+        )
+
+        val dominant = resolveDominant(context, status)
+        result = when (dominant) {
+            DominantModifier.ACTIVE_EXERCISE -> applyActiveExercise(result, context, status)
+            DominantModifier.EXERCISE_RECOVERY -> applyExerciseRecovery(result, context, status)
+            DominantModifier.WALK_RECOVERY -> applyWalkRecovery(result, context, status)
+            DominantModifier.ILLNESS -> applyIllness(result, context)
+            DominantModifier.STRESS -> applyStress(result, context)
+            DominantModifier.HEAT -> applyHeat(result, context)
+            DominantModifier.NONE -> result
         }
         result = addNonDominantWarnings(result, context, dominant)
         return result
     }
 
-    private fun applyActiveExercise(state: CalculationState, context: PatientContext): CalculationState {
+    private fun applyActiveExercise(state: CalculationState, context: PatientContext, status: PatientStatus): CalculationState {
         var result = state
 
         // A. Ketone warning at very high BG (ISPAD 2022: ≥1.5 mmol/L = contraindicated)
@@ -78,7 +87,7 @@ class ContextualModifierStep : AlgorithmStep {
 
         // B. Meal reduction by sport type and intensity (T1DEXIP / Moser 2025 for AID)
         val mealReductionPercent = if (context.bolusSettings.isAidPump) {
-            0.30
+            0.0  // AID: pump calculates dose from entered carbs. No manual dose modification.
         } else {
             when (context.sportType) {
                 "Aerobic" -> when (context.sportIntensity) {
@@ -87,14 +96,19 @@ class ContextualModifierStep : AlgorithmStep {
                 "Mixed" -> when (context.sportIntensity) {
                     3 -> 0.40; 2 -> 0.25; else -> 0.15
                 }
-                "Walking" -> 0.25
+                "Walking" -> when {
+                    context.sportDurationMins >= 45 -> 0.43  // Zivkovic ratio: 87% × aerobic medium 50%
+                    context.sportDurationMins >= 30 -> 0.35  // Midpoint: 87% × aerobic low-medium 40%
+                    else -> 0.25                              // ISPAD: moderate aerobic classification
+                }
                 "Anaerobic" -> 0.10
                 else -> 0.25
             }
         }
 
-        // Duration modifier: >45 min adds extra (ISPAD 45-min threshold)
-        val durationExtra = if (context.sportDurationMins > 45) {
+        // Duration modifier: >45 min adds extra (ISPAD 45-min threshold).
+        // Skip for Walking — it already accounts for duration in its own percentage tiers.
+        val durationExtra = if (context.sportType != "Walking" && context.sportDurationMins > 45) {
             minOf(0.20, (context.sportDurationMins - 45) * 0.005)
         } else 0.0
         val totalMealReduction = minOf(0.90, mealReductionPercent + durationExtra)
@@ -176,7 +190,6 @@ class ContextualModifierStep : AlgorithmStep {
                 runningTotal = newDose
             )).copy(currentDose = newDose)
         } else if (state.currentDose > 0) {
-            // Fallback: metadata not populated — reduce total dose
             val newDose = state.currentDose * (1.0 - totalMealReduction)
             val reductionPct = String.format("%.0f", totalMealReduction * 100)
             result = result.addEntry(BreakdownEntry(
@@ -249,9 +262,10 @@ class ContextualModifierStep : AlgorithmStep {
                     stepName = name,
                     label = "Activate Exercise Target",
                     emoji = "🎯",
-                    description = "Activate your pump's Exercise/Activity target 1–2 hours before planned " +
-                        "activity. This raises your glucose target to 150 mg/dL and suspends automatic " +
-                        "correction boluses (Moser 2025).",
+                    description = "Activate your pump's Exercise/Activity target 1–2 hours before " +
+                        "planned activity. This raises your glucose target to 150 mg/dL and suspends " +
+                        "automatic correction boluses (Moser 2025). Consider bolusing for only " +
+                        "67–75% of your planned carbohydrates.",
                     effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
                 ))
@@ -261,8 +275,8 @@ class ContextualModifierStep : AlgorithmStep {
                             stepName = name,
                             label = "Pre-Exercise Carbohydrates",
                             emoji = "🍞",
-                            description = "Despite automated insulin adjustments, your pump cannot provide " +
-                                "carbohydrates. Consider 10g of fast-acting carbs before starting exercise.",
+                            description = "BG is below 100 mg/dL. Consider 10g of fast-acting " +
+                                "carbohydrates without additional insulin before starting exercise.",
                             effect = Effect.NEUTRAL,
                             runningTotal = result.currentDose
                         ))
@@ -320,7 +334,7 @@ class ContextualModifierStep : AlgorithmStep {
         return result
     }
 
-    private fun applyExerciseRecovery(state: CalculationState, context: PatientContext): CalculationState {
+    private fun applyExerciseRecovery(state: CalculationState, context: PatientContext, status: PatientStatus): CalculationState {
         var result = state
         val mealBolus = state.metadata["mealBolus"] as? Double ?: 0.0
         val correctionBolus = state.metadata["correctionBolus"] as? Double ?: 0.0
@@ -389,15 +403,146 @@ class ContextualModifierStep : AlgorithmStep {
                 effect = Effect.NEUTRAL,
                 runningTotal = result.currentDose
             ))
-            TherapyType.PUMP_AID -> result = result.addEntry(BreakdownEntry(
+            TherapyType.PUMP_AID -> {
+                if (context.hoursSinceLastExercise <= 2.0f &&
+                    context.lastExerciseSportType in listOf("Aerobic", "Mixed")) {
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Extend Exercise Target",
+                        emoji = "🎯",
+                        description = "Consider keeping your Exercise/Activity target active for " +
+                            "2–3 hours after aerobic or mixed exercise to prevent rebound hypoglycemia.",
+                        effect = Effect.NEUTRAL,
+                        runningTotal = result.currentDose
+                    ))
+                }
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Post-Exercise Monitoring",
+                    emoji = "👀",
+                    description = "Insulin sensitivity is elevated after exercise. Monitor glucose closely. " +
+                        "Consider carbohydrate intake without additional insulin if BG is borderline.",
+                    effect = Effect.NEUTRAL,
+                    runningTotal = result.currentDose
+                ))
+                if (context.currentBG > 0 && context.currentBG in 70.0..100.0) {
+                    result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 15))
+                        .addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Post-Exercise Carbohydrates",
+                            emoji = "🍞",
+                            description = "BG is ${context.currentBG.toInt()} mg/dL post-exercise. " +
+                                "Consider 15g carbohydrates without additional insulin.",
+                            effect = Effect.NEUTRAL,
+                            runningTotal = result.currentDose
+                        ))
+                }
+            }
+        }
+
+        return result
+    }
+
+    private fun applyWalkRecovery(state: CalculationState, context: PatientContext, status: PatientStatus): CalculationState {
+        var result = state
+        val mealBolus = state.metadata["mealBolus"] as? Double ?: 0.0
+        val correctionBolus = state.metadata["correctionBolus"] as? Double ?: 0.0
+        val duration = context.lastExerciseDurationMins
+
+        // Walking recovery reduction: flat within window, scaled by walk duration.
+        // 10-30 min → 15%, 1h window  (proportional from active tiers, Zivkovic ratio 0.87)
+        // 30-45 min → 20%, 2h window
+        // >45 min   → 25%, 3h window
+        val reductionPercent = when {
+            duration >= 45 -> 0.25
+            duration >= 30 -> 0.20
+            else -> 0.15
+        }
+
+        val hasMealOrCorrection = mealBolus > 0.0 || correctionBolus > 0.0
+
+        if (hasMealOrCorrection) {
+            val reducedMeal = mealBolus * (1.0 - reductionPercent)
+            val reducedCorrection = correctionBolus * (1.0 - reductionPercent)
+            val newDose = reducedMeal + reducedCorrection
+            val totalReduction = (mealBolus + correctionBolus) - newDose
+
+            result = result.addEntry(BreakdownEntry(
                 stepName = name,
-                label = "Post-Exercise AID Advice",
-                emoji = "🎯",
-                description = "Monitor glucose post-exercise. Consider keeping Exercise Target active " +
-                    "if within 2 hours of finishing exercise.",
-                effect = Effect.NEUTRAL,
-                runningTotal = result.currentDose
-            ))
+                label = "Post-Walk Recovery",
+                emoji = "🚶",
+                description = "Insulin sensitivity is elevated after your ${duration}-minute walk. " +
+                    "Meal and correction reduced by ${(reductionPercent * 100).toInt()}%. " +
+                    "Walking has the lowest nocturnal hypoglycemia risk of all exercise types.",
+                effect = Effect.DECREASE,
+                percentChange = -reductionPercent,
+                valueChange = -totalReduction,
+                runningTotal = newDose
+            )).copy(currentDose = newDose)
+        } else if (state.currentDose > 0) {
+            val reduction = state.currentDose * reductionPercent
+            val newDose = state.currentDose - reduction
+            result = result.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Post-Walk Recovery",
+                emoji = "🚶",
+                description = "Insulin sensitivity is elevated after your ${duration}-minute walk. " +
+                    "Dose reduced by ${(reductionPercent * 100).toInt()}%.",
+                effect = Effect.DECREASE,
+                percentChange = -reductionPercent,
+                valueChange = -reduction,
+                runningTotal = newDose
+            )).copy(currentDose = newDose)
+        }
+
+        when (context.therapyType) {
+            TherapyType.MDI -> {
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Post-Walk Monitoring",
+                    emoji = "👀",
+                    description = "Monitor glucose closely. Your basal insulin remains active " +
+                        "and cannot be adjusted. Consider a small snack if BG trends downward.",
+                    effect = Effect.NEUTRAL,
+                    runningTotal = result.currentDose
+                ))
+            }
+            TherapyType.PUMP_STANDARD -> {
+                if (duration >= 30) {
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Temp Basal Suggestion",
+                        emoji = "⚙️",
+                        description = "Consider a temporary basal rate of 90% for 1–2 hours " +
+                            "post-walk to account for mildly elevated insulin sensitivity.",
+                        effect = Effect.NEUTRAL,
+                        runningTotal = result.currentDose
+                    ))
+                }
+            }
+            TherapyType.PUMP_AID -> {
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Post-Walk Monitoring",
+                    emoji = "👀",
+                    description = "Monitor glucose. Your pump will adjust insulin delivery " +
+                        "automatically. Consider a small carb intake without insulin if BG is borderline.",
+                    effect = Effect.NEUTRAL,
+                    runningTotal = result.currentDose
+                ))
+                if (context.currentBG > 0 && context.currentBG in 70.0..100.0) {
+                    result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 10))
+                        .addEntry(BreakdownEntry(
+                            stepName = name,
+                            label = "Post-Walk Carbohydrates",
+                            emoji = "🍞",
+                            description = "BG is ${context.currentBG.toInt()} mg/dL after walking. " +
+                                "Consider 10g carbohydrates without additional insulin.",
+                            effect = Effect.NEUTRAL,
+                            runningTotal = result.currentDose
+                        ))
+                }
+            }
         }
 
         return result
@@ -462,6 +607,7 @@ class ContextualModifierStep : AlgorithmStep {
             val dominantLabel = when (dominant) {
                 DominantModifier.ACTIVE_EXERCISE -> "active exercise"
                 DominantModifier.EXERCISE_RECOVERY -> "exercise recovery"
+                DominantModifier.WALK_RECOVERY -> "recent walking activity"
                 DominantModifier.STRESS -> "stress"
                 DominantModifier.HEAT -> "elevated temperature"
                 else -> "the current modifier"

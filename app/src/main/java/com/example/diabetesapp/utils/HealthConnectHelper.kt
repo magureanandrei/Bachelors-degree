@@ -100,7 +100,7 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
             var sessionSteps = 0L
             var lastEnd: Instant? = null
 
-            val minSessionMinutes = 7L
+            val minSessionMinutes = 10L
             val walkingStepsPerMin = 55.0
             val maxGapMinutes = 10L
 
