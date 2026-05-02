@@ -3,6 +3,7 @@ package com.example.diabetesapp.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.diabetesapp.algorithm.BreakdownEntry
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.CgmTrend
@@ -62,6 +63,7 @@ data class BolusInputState(
     val minutesUntilSport: Float = 0f,
 
     val sportReductionLog: String = "",
+    val breakdownSteps: List<BreakdownEntry> = emptyList(),
 
     val bloodGlucoseError: String? = null,
     val carbsError: String? = null,
@@ -324,6 +326,7 @@ class CalculateBolusViewModel(
                 calculatedDose = decision.suggestedInsulinDose,
                 userAdjustedDose = decision.suggestedInsulinDose,
                 sportReductionLog = decision.clinicalRationale,
+                breakdownSteps = decision.breakdownSteps,
                 warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
                 showResult = true,
                 showResultDialog = showDialog

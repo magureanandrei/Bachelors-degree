@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.diabetesapp.algorithm.BreakdownEntry
 
 @Composable
 fun SmartBolusResultDialog(
@@ -31,6 +32,8 @@ fun SmartBolusResultDialog(
     isSportModeActive: Boolean,
     minutesUntilSport: Float,
     sportLog: String,
+    breakdownSteps: List<BreakdownEntry> = emptyList(),
+    isAid: Boolean = false,
     onAdjustDose: (Double) -> Unit,
     onDismiss: () -> Unit,
     onLogAndSave: () -> Unit
@@ -117,7 +120,9 @@ fun SmartBolusResultDialog(
                 DoseBreakdownCard(
                     standardDose = standardDose,
                     suggestedDose = calculatedDose,
-                    rationale = sportLog
+                    rationale = sportLog,
+                    breakdownSteps = breakdownSteps,
+                    isAid = isAid
                 )
             }
         },

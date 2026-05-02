@@ -258,14 +258,24 @@ class ContextualModifierStep : AlgorithmStep {
                 }
             }
             TherapyType.PUMP_AID -> {
+                val targetAdvice = when {
+                    context.minutesUntilSport >= 60 ->
+                        "Activate your pump's Exercise/Activity target now — ideally 1 hour before " +
+                        "planned activity. This raises your glucose target to 150 mg/dL and suspends " +
+                        "automatic correction boluses."
+                    context.minutesUntilSport in 15..59 ->
+                        "Activate your pump's Exercise/Activity target immediately if not already active. " +
+                        "This raises your glucose target to 150 mg/dL."
+                    context.minutesUntilSport in 1..14 ->
+                        "Ensure your Exercise/Activity target is active. Exercise is starting very soon."
+                    else ->
+                        "Ensure your Exercise/Activity target is active during your workout."
+                }
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
-                    label = "Activate Exercise Target",
+                    label = "Exercise Target",
                     emoji = "🎯",
-                    description = "Activate your pump's Exercise/Activity target 1–2 hours before " +
-                        "planned activity. This raises your glucose target to 150 mg/dL and suspends " +
-                        "automatic correction boluses (Moser 2025). Consider bolusing for only " +
-                        "67–75% of your planned carbohydrates.",
+                    description = "$targetAdvice Consider bolusing for only 67–75% of your planned carbohydrates.",
                     effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
                 ))

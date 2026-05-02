@@ -1,7 +1,9 @@
 package com.example.diabetesapp.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
@@ -14,6 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.diabetesapp.algorithm.BreakdownEntry
+import com.example.diabetesapp.algorithm.Effect
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -22,13 +26,15 @@ import java.util.Locale
 fun DoseBreakdownCard(
     standardDose: Double,
     suggestedDose: Double,
-    rationale: String
+    rationale: String = "",
+    breakdownSteps: List<BreakdownEntry> = emptyList(),
+    isAid: Boolean = false
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)), // Light, calming green
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -50,14 +56,23 @@ fun DoseBreakdownCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Show the mathematical difference if modifiers were applied
             if (standardDose != suggestedDose) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Standard Math:", fontSize = 13.sp, color = Color.Gray)
-                    Text("${standardDose}U", fontSize = 13.sp, color = Color.Gray, textDecoration = TextDecoration.LineThrough)
+                if (isAid) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Pump-Managed:", fontSize = 13.sp, color = Color(0xFF00695C))
+                        Text("Corrections handled by SmartGuard", fontSize = 13.sp, color = Color(0xFF00695C))
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Standard Math:", fontSize = 13.sp, color = Color.Gray)
+                        Text("${standardDose}U", fontSize = 13.sp, color = Color.Gray, textDecoration = TextDecoration.LineThrough)
+                    }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -71,17 +86,64 @@ fun DoseBreakdownCard(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Display the detailed log from the AlgorithmEngine
-            Text(
-                text = rationale.ifEmpty { "Standard calculation applied. No active modifiers." },
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                color = Color.DarkGray
-            )
+            if (breakdownSteps.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    breakdownSteps.forEachIndexed { index, entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = entry.emoji,
+                                fontSize = 16.sp,
+                                modifier = Modifier.width(24.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = entry.label,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = when (entry.effect) {
+                                        Effect.INCREASE -> Color(0xFFD84315)
+                                        Effect.DECREASE -> Color(0xFF2E7D32)
+                                        Effect.WARNING  -> Color(0xFFE65100)
+                                        Effect.NEUTRAL  -> Color(0xFF004D40)
+                                    }
+                                )
+                                Text(
+                                    text = entry.description,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF37474F),
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                        if (index < breakdownSteps.lastIndex) {
+                            HorizontalDivider(
+                                color = Color(0xFF80CBC4).copy(alpha = 0.3f),
+                                thickness = 0.5.dp
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = rationale.ifEmpty { "Standard calculation applied. No active modifiers." },
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    color = Color.DarkGray
+                )
+            }
         }
     }
-
 }
+
 @Composable
 fun SettingsChangeDivider(timestamp: Long, description: String) {
     val timeStr = remember(timestamp) {
@@ -108,4 +170,3 @@ fun SettingsChangeDivider(timestamp: Long, description: String) {
         )
     }
 }
-

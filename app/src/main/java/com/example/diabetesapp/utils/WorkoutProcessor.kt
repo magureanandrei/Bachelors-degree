@@ -82,7 +82,38 @@ object WorkoutProcessor {
     ) {
         allWorkouts.forEach { workout ->
             if (workout.sportType == "Walking" && workout.notes.startsWith("Auto-detected")) {
-                val workoutEnd = workout.timestamp + (workout.sportDuration!! * 60 * 1000L).toLong()
+                val workoutStart = workout.timestamp
+                val workoutEnd = workoutStart + (workout.sportDuration!! * 60 * 1000L).toLong()
+
+                // Suppress walks that overlap with manually logged structured sport events
+                val overlapsManualSport = existingLogs.any { existing ->
+                    existing.isSportModeActive &&
+                    existing.sportType != "Walking" &&
+                    !existing.notes.startsWith("Auto-detected") &&
+                    !existing.notes.startsWith("Auto-imported") &&
+                    run {
+                        val existingStart = existing.timestamp
+                        val existingEnd = existingStart + ((existing.sportDuration ?: 0f) * 60 * 1000L).toLong()
+                        val overlapStart = maxOf(workoutStart, existingStart)
+                        val overlapEnd = minOf(workoutEnd, existingEnd)
+                        val overlapMs = (overlapEnd - overlapStart).coerceAtLeast(0L)
+                        val walkDuration = workoutEnd - workoutStart
+                        overlapMs > walkDuration * 0.3
+                    }
+                }
+
+                if (overlapsManualSport) {
+                    Log.d("WorkoutProcessor", "Suppressing walk that overlaps manual sport entry: " +
+                        "${workout.sportDuration?.toInt()}min at ${java.util.Date(workoutStart)}")
+                    existingLogs.filter { existing ->
+                        existing.isSportModeActive &&
+                        existing.sportType == "Walking" &&
+                        existing.notes.startsWith("Auto-detected") &&
+                        existing.timestamp >= workoutStart - 60 * 1000L &&
+                        existing.timestamp <= workoutEnd
+                    }.forEach { repository.delete(it) }
+                    return@forEach
+                }
 
                 // Re-sum steps for this walk's full time window
                 val freshSteps = stepRecords
