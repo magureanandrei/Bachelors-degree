@@ -24,10 +24,10 @@ object AlgorithmEngine {
         listOf(
             HypoGuardStep(),              // 0. Immediate BG safety
             BaselineStep(),               // 1. Raw meal + correction (therapy-aware)
-            IobDeductionStep(),           // 2. Subtract active insulin
-            CgmTrendStep(),               // 3. Real-time BG trend
-            ContextualModifierStep(),     // 4. ONE dominant modifier (exercise/illness/stress/heat)
-            NighttimeSafetyStep(),        // 5. Nighttime warnings (no dose change)
+            CgmTrendStep(),               // 2. Real-time BG trend
+            ContextualModifierStep(),     // 3. ONE dominant modifier (exercise/illness/stress/heat)
+            NighttimeSafetyStep(),        // 4. Nighttime warnings (no dose change)
+            IobDeductionStep(),           // 5. Subtract active insulin (after all modifiers)
             BasalAwarenessStep(),         // 6. MDI basal warnings
             MaxBolusCapStep()             // 7. Safety cap
         )

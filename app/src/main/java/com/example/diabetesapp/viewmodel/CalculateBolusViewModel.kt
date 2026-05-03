@@ -322,8 +322,14 @@ class CalculateBolusViewModel(
 
             val decision = AlgorithmEngine.calculateClinicalAdvice(context)
 
+            val standardDose = if (currentSettings.isAidPump) {
+                context.plannedCarbs / currentSettings.getCurrentIcr()
+            } else {
+                (context.plannedCarbs / currentSettings.getCurrentIcr()) +
+                    maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf())
+            }
             _inputState.value = _inputState.value.copy(
-                standardDose = (context.plannedCarbs / currentSettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf()),
+                standardDose = standardDose,
                 calculatedDose = decision.suggestedInsulinDose,
                 userAdjustedDose = decision.suggestedInsulinDose,
                 sportReductionLog = decision.clinicalRationale,
@@ -358,11 +364,7 @@ class CalculateBolusViewModel(
                             bloodGlucose = bg, carbs = 0.0,
                             standardDose = 0.0, suggestedDose = 0.0, administeredDose = 0.0,
                             isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
-                            notes = buildString {
-                                append("AID Advisory: ${carbs.toInt()}g carbs recommended for pump entry.")
-                                if (state.selectedFactor != "None") append(" [Factor: ${state.selectedFactor}]")
-                                if (state.notes.isNotBlank()) append(" ${state.notes}")
-                            }.trim(),
+                            notes = buildAidNote(carbs, state.rescueCarbs, state.selectedFactor, state.notes),
                             clinicalSuggestion = state.sportReductionLog,
                             isHighStress = state.selectedFactor == "Stress",
                             isIllness = state.selectedFactor == "Illness",
@@ -427,11 +429,7 @@ class CalculateBolusViewModel(
                         isHighStress = state.selectedFactor == "Stress",
                         isIllness = state.selectedFactor == "Illness",
                         isExtremeHeat = state.selectedFactor == "Heat",
-                        notes = buildString {
-                            append("AID Advisory: ${carbs.toInt()}g carbs recommended for pump entry.")
-                            if (state.selectedFactor != "None") append(" [Factor: ${state.selectedFactor}]")
-                            if (state.notes.isNotBlank()) append(" ${state.notes}")
-                        }.trim()
+                        notes = buildAidNote(carbs, state.rescueCarbs, state.selectedFactor, state.notes)
                     )
                 } else {
                     BolusLog(
@@ -458,6 +456,27 @@ class CalculateBolusViewModel(
             }
             resetForm()
         }
+    }
+
+    private fun buildAidNote(carbs: Double, rescueCarbs: Int, selectedFactor: String, notes: String): String {
+        val effectivePumpCarbs = maxOf(0, carbs.toInt() - rescueCarbs)
+        val advisory = when {
+            carbs > 0 && rescueCarbs == 0 -> "AID Advisory: Enter ${carbs.toInt()}g carbs into pump."
+            carbs > 0 && rescueCarbs > 0 -> "AID Advisory: Treat low BG first — eat ${rescueCarbs}g fast-acting carbs before pump entry. Then enter ${effectivePumpCarbs}g into pump."
+            rescueCarbs > 0 -> "AID Advisory: Low BG — eat ${rescueCarbs}g fast-acting carbs. No pump entry needed."
+            else -> ""
+        }
+        return buildString {
+            if (advisory.isNotEmpty()) append(advisory)
+            if (selectedFactor != "None") {
+                if (isNotEmpty()) append(" ")
+                append("[Factor: $selectedFactor]")
+            }
+            if (notes.isNotBlank()) {
+                if (isNotEmpty()) append(" ")
+                append(notes)
+            }
+        }.trim()
     }
 
     private fun resetForm() {

@@ -7,9 +7,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.diabetesapp.data.models.BgFetchStatus
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
+import com.example.diabetesapp.data.models.CgmTrend
+import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
+import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,8 +24,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 import java.util.Calendar
 
 enum class InsightType { ON_TRACK, SUGGESTION, WARNING }
@@ -256,9 +259,38 @@ class LogReadingViewModel(
             else -> "Event Logged"
         }
 
+        val currentSettings = settings.value
+        val algorithmContext = PatientContext(
+            therapyType = currentSettings.therapyTypeEnum,
+            bolusSettings = currentSettings,
+            currentBG = bg,
+            hasCGM = currentSettings.isCgmEnabled,
+            cgmTrend = CgmTrend.NONE,
+            activeInsulinIOB = 0.0,
+            plannedCarbs = carbs,
+            isDoingSport = state.isSportModeActive,
+            sportType = state.sportType,
+            sportIntensity = state.sportIntensityValue.toInt(),
+            sportDurationMins = state.sportDurationMinutes.toInt(),
+            minutesUntilSport = 0,
+            isHighStress = false,
+            isIllness = false,
+            isExtremeHeat = false,
+            timeOfDay = LocalTime.now(),
+            dailySteps = 0L,
+            basalDoseToday = 0.0,
+            basalDurationHours = currentSettings.basalDurationHours,
+            hasBasalConfigured = currentSettings.hasBasalConfigured,
+            hoursSinceLastExercise = -1f,
+            lastExerciseSportType = "",
+            lastExerciseDurationMins = 0
+        )
+        val decision = AlgorithmEngine.calculateClinicalAdvice(algorithmContext)
+        val clinicalSuggestion = decision.clinicalRationale.ifBlank { contextMessage }
+
         _uiState.value = _uiState.value.copy(
             currentInsight = LogInsight(insightType, insightTitle, contextMessage),
-            pendingClinicalSuggestion = contextMessage
+            pendingClinicalSuggestion = clinicalSuggestion
         )
     }
 

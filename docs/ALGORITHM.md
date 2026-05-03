@@ -13,19 +13,16 @@ Modular pipeline: `AlgorithmPipeline` folds `List<AlgorithmStep>` over `Calculat
 ## Pipeline Order (don't reorder without clinical review)
 
 ```
-0. HypoGuardStep         — BG < hypoLimit → warn + rescue carbs. BG < 54 → severe warning
-1. BaselineStep           — Meal (carbs/ICR) + Correction ((BG-target)/ISF)
-                            AID: skip correction entirely (pump auto-corrects >120 mg/dL)
-                            AID BG>250: warn about infusion set, still no correction
-2. OutsideFactorsStep     — Illness +25%, Stress +15% (else-if), Heat -10% (independent)
-3. IobDeductionStep       — Subtract IOB, floor at 0
-4. CgmTrendStep           — MDI/Pump: DoubleUp +20%, SingleDown -20%, DoubleDown halve+15g carbs
-                            AID: skip dose adjustments, keep carb suggestions for downward trends
-5. SportModifierStep      — Reduction matrix (Aer 25/50/75%, Mix 15/25/40%, Ana 10%)
-                            Duration >45min: up to +20% extra. Cap 90%
-                            Section C: therapy-specific advice (MDI→carbs, Pump→temp basal, AID→exercise target)
-                            Section D: post-sport late hypo warning (7-11h window)
-6. BasalAwarenessStep     — MDI only. Warn if no basal logged. Sport+basal → remind can't suspend
+0. HypoGuardStep         — BG < hypoLimit → warn + rescue carbs. BG < 54 → severe.
+                            Sets metadata["hypoReservedCarbs"] to absorb entered carbs into rescue.
+1. BaselineStep           — Meal (effectiveCarbs/ICR) + Correction ((BG-target)/ISF)
+                            AID: no correction (pump auto-corrects). Reads hypoReservedCarbs to reduce effective carbs.
+2. CgmTrendStep           — AID: carb suggestions only. MDI/Pump: ISF-unit adjustments (Aleppo 2017)
+3. ContextualModifier     — ONE dominant modifier: Exercise > Recovery > Illness > Stress > Heat
+                            AID: illness/stress/heat generate warnings only, no dose change
+4. NighttimeSafetyStep   — Bedtime warnings. AID: higher threshold (90 vs 120), no rescueCarbs injection
+5. IobDeductionStep       — Subtract IOB after all modifiers, floor at 0
+6. BasalAwarenessStep     — MDI only: warn if no basal logged
 7. MaxBolusCapStep        — Clamp to settings.maxBolus
 ```
 
@@ -82,6 +79,4 @@ ClinicalDecision(
 
 ## Planned Future Phases
 
-- Phase 3: Nighttime safety (21:00-06:00 correction reduction)
-- Phase 4: Sport remodel (walking category, meal/correction split, Zivkovic 2026)
-- Phase 5: CGM trend redesign (ISF-unit-based per Aleppo/Laffel 2017)
+- Phase 6: basalDoseToday sum from DB (currently hardcoded 0.0 in CalculateBolusViewModel)

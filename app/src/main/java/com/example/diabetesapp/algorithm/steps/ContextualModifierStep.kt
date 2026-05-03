@@ -559,7 +559,30 @@ class ContextualModifierStep : AlgorithmStep {
     }
 
     private fun applyIllness(state: CalculationState, context: PatientContext): CalculationState {
-        if (state.currentDose <= 0) return state
+        if (context.bolusSettings.isAidPump) {
+            return state.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Illness — AID Mode",
+                emoji = "🩺",
+                description = "Illness increases insulin resistance by 20–50% (ISPAD). Your pump " +
+                    "will continue auto-dosing, but may need manual support if BG remains elevated " +
+                    "after meals. Monitor closely and consider a pen correction if hyperglycemia " +
+                    "persists beyond 2–3 hours.",
+                effect = Effect.WARNING,
+                runningTotal = state.currentDose
+            ))
+        }
+        if (state.currentDose <= 0) {
+            return state.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Illness",
+                emoji = "🩺",
+                description = "No active dose to adjust. If you are ill, monitor BG closely — insulin " +
+                    "requirements typically increase 20–50%. Consider logging a BG check every 1–2 hours.",
+                effect = Effect.WARNING,
+                runningTotal = state.currentDose
+            ))
+        }
         val increase = state.currentDose * 0.25
         val newDose = state.currentDose + increase
         return state.addEntry(BreakdownEntry(
@@ -575,7 +598,28 @@ class ContextualModifierStep : AlgorithmStep {
     }
 
     private fun applyStress(state: CalculationState, context: PatientContext): CalculationState {
-        if (state.currentDose <= 0) return state
+        if (context.bolusSettings.isAidPump) {
+            return state.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Stress — AID Mode",
+                emoji = "😫",
+                description = "Stress can elevate BG via cortisol-driven insulin resistance. Your pump " +
+                    "will continue auto-dosing. Monitor closely — if BG remains elevated after meals, " +
+                    "stress may require additional attention or a manual correction.",
+                effect = Effect.WARNING,
+                runningTotal = state.currentDose
+            ))
+        }
+        if (state.currentDose <= 0) {
+            return state.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Stress",
+                emoji = "😫",
+                description = "No active dose to adjust. Stress may elevate BG via cortisol. Monitor closely.",
+                effect = Effect.WARNING,
+                runningTotal = state.currentDose
+            ))
+        }
         val increase = state.currentDose * 0.15
         val newDose = state.currentDose + increase
         return state.addEntry(BreakdownEntry(
@@ -591,7 +635,29 @@ class ContextualModifierStep : AlgorithmStep {
     }
 
     private fun applyHeat(state: CalculationState, context: PatientContext): CalculationState {
-        if (state.currentDose <= 0) return state
+        if (context.bolusSettings.isAidPump) {
+            return state.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Heat — AID Mode",
+                emoji = "🔥",
+                description = "Elevated temperature accelerates insulin absorption risk. Your pump " +
+                    "will continue auto-dosing. Consider reducing your carb entry slightly and " +
+                    "watch for unexpected lows after meals.",
+                effect = Effect.WARNING,
+                runningTotal = state.currentDose
+            ))
+        }
+        if (state.currentDose <= 0) {
+            return state.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Heat",
+                emoji = "🔥",
+                description = "No active dose to adjust. Elevated temperature accelerates insulin absorption — " +
+                    "watch for unexpected lows.",
+                effect = Effect.WARNING,
+                runningTotal = state.currentDose
+            ))
+        }
         val decrease = state.currentDose * 0.10
         val newDose = state.currentDose - decrease
         return state.addEntry(BreakdownEntry(

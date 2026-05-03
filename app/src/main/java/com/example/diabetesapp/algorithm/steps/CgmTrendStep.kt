@@ -127,6 +127,44 @@ class CgmTrendStep : AlgorithmStep {
 
         if (currentIsf <= 0) return result
 
+        // DoubleDown: branch on whether a meal is planned — meal carbs replace rescue carbs
+        if (context.cgmTrend == CgmTrend.DOUBLE_DOWN) {
+            if (context.plannedCarbs > 0) {
+                val rawAdjustment = anticipatedChange(CgmTrend.DOUBLE_DOWN) / currentIsf
+                val adjustment = roundToHalf(rawAdjustment)
+                if (adjustment != 0.0) {
+                    val newDose = maxOf(0.0, result.currentDose + adjustment)
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "CGM Trend: ↓↓",
+                        emoji = "📉",
+                        description = "Glucose is dropping rapidly (↓↓). Your meal carbs will help stabilize BG — " +
+                            "bolus reduced by ${String.format("%.1f", Math.abs(adjustment))}U accordingly. Monitor closely after eating.",
+                        effect = Effect.DECREASE,
+                        valueChange = adjustment,
+                        runningTotal = newDose
+                    )).copy(currentDose = newDose)
+                }
+            } else {
+                val carbAmount = when {
+                    context.currentBG < 90  -> 20
+                    context.currentBG < 120 -> 15
+                    else                    -> 10
+                }
+                result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, carbAmount))
+                    .addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Rescue Carbs (Rapid Drop)",
+                        emoji = "🍬",
+                        description = "Glucose is dropping rapidly (↓↓). No meal entered — consider ${carbAmount}g of " +
+                            "fast-acting carbohydrates to prevent hypoglycemia.",
+                        effect = Effect.WARNING,
+                        runningTotal = result.currentDose
+                    ))
+            }
+            return result
+        }
+
         val anticipated = anticipatedChange(context.cgmTrend)
         val rawAdjustment = anticipated / currentIsf
         val adjustment = roundToHalf(rawAdjustment)
@@ -152,25 +190,6 @@ class CgmTrendStep : AlgorithmStep {
             valueChange = adjustment,
             runningTotal = newDose
         )).copy(currentDose = newDose)
-
-        // DoubleDown: rescue carbs scaled by BG level (Aleppo et al. 2017)
-        if (context.cgmTrend == CgmTrend.DOUBLE_DOWN) {
-            val carbAmount = when {
-                context.currentBG < 90  -> 20
-                context.currentBG < 120 -> 15
-                else                    -> 10
-            }
-            result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, carbAmount))
-                .addEntry(BreakdownEntry(
-                    stepName = name,
-                    label = "Rescue Carbs (Rapid Drop)",
-                    emoji = "🍬",
-                    description = "Glucose is dropping rapidly. Consider ${carbAmount}g of " +
-                        "fast-acting carbohydrates as a safety measure.",
-                    effect = Effect.WARNING,
-                    runningTotal = result.currentDose
-                ))
-        }
 
         // SingleDown + borderline BG: carb suggestion
         if (context.cgmTrend == CgmTrend.SINGLE_DOWN && context.currentBG in 70.0..99.9) {

@@ -22,29 +22,61 @@ class HypoGuardStep : AlgorithmStep {
         var result = state
 
         return if (context.currentBG < 54.0) {
-            result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 20))
-                .addEntry(BreakdownEntry(
-                    stepName = name,
-                    label = "Severe Hypoglycemia",
-                    emoji = "🚨",
-                    description = "Your BG is critically low at ${context.currentBG.toInt()} mg/dL. " +
+            val rescueAmount = 20
+            val hypoReservedCarbs = minOf(rescueAmount, context.plannedCarbs.toInt())
+            val description = when {
+                context.plannedCarbs >= rescueAmount ->
+                    "Your BG is critically low at ${context.currentBG.toInt()} mg/dL. " +
+                        "Your entered carbs will serve as the rescue treatment — " +
+                        "eat them first WITHOUT bolusing. Wait for BG to recover above ${hypoLimit.toInt()} " +
+                        "mg/dL before entering anything into your pump/taking insulin."
+                context.plannedCarbs > 0 ->
+                    "Your BG is critically low at ${context.currentBG.toInt()} mg/dL. " +
+                        "Eat your ${context.plannedCarbs.toInt()}g plus an additional " +
+                        "${rescueAmount - context.plannedCarbs.toInt()}g of fast-acting carbs. " +
+                        "Do not bolus until BG recovers above ${hypoLimit.toInt()} mg/dL."
+                else ->
+                    "Your BG is critically low at ${context.currentBG.toInt()} mg/dL. " +
                         "Consume 15-20g of fast-acting carbohydrates immediately. " +
-                        "Do not administer insulin until BG recovers above ${hypoLimit.toInt()} mg/dL.",
-                    effect = Effect.WARNING,
-                    runningTotal = result.currentDose
-                ))
+                        "Do not administer insulin until BG recovers above ${hypoLimit.toInt()} mg/dL."
+            }
+            result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, rescueAmount))
+            result = result.withMeta("hypoReservedCarbs", hypoReservedCarbs)
+            result = result.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Severe Hypoglycemia",
+                emoji = "🚨",
+                description = description,
+                effect = Effect.WARNING,
+                runningTotal = result.currentDose
+            ))
             result
         } else {
-            result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 15))
-                .addEntry(BreakdownEntry(
-                    stepName = name,
-                    label = "Low Blood Glucose",
-                    emoji = "⚠️",
-                    description = "Your BG is below your hypo threshold (${hypoLimit.toInt()} mg/dL). " +
-                        "Consider treating with 15g fast-acting carbohydrates before bolusing.",
-                    effect = Effect.WARNING,
-                    runningTotal = result.currentDose
-                ))
+            val rescueAmount = 15
+            val hypoReservedCarbs = minOf(rescueAmount, context.plannedCarbs.toInt())
+            val description = when {
+                context.plannedCarbs >= rescueAmount ->
+                    "Your BG is low. Your entered carbs will serve as the rescue treatment — " +
+                        "eat them first WITHOUT bolusing. Wait for BG to recover above ${hypoLimit.toInt()} " +
+                        "mg/dL before entering anything into your pump/taking insulin."
+                context.plannedCarbs > 0 ->
+                    "Your BG is low. Eat your ${context.plannedCarbs.toInt()}g plus an additional " +
+                        "${rescueAmount - context.plannedCarbs.toInt()}g of fast-acting carbs. " +
+                        "Do not bolus until BG recovers above ${hypoLimit.toInt()} mg/dL."
+                else ->
+                    "Your BG is below your hypo threshold (${hypoLimit.toInt()} mg/dL). " +
+                        "Consider treating with 15g fast-acting carbohydrates before bolusing."
+            }
+            result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, rescueAmount))
+            result = result.withMeta("hypoReservedCarbs", hypoReservedCarbs)
+            result = result.addEntry(BreakdownEntry(
+                stepName = name,
+                label = "Low Blood Glucose",
+                emoji = "⚠️",
+                description = description,
+                effect = Effect.WARNING,
+                runningTotal = result.currentDose
+            ))
             result
         }
     }

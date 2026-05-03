@@ -209,9 +209,9 @@ private fun AidResultContent(
                  it.label.contains("Walk", ignoreCase = true) ||
                  it.label.contains("Recovery", ignoreCase = true))
             }
-            val hasExerciseReduction = exerciseStep != null && (exerciseStep.percentChange ?: 0.0) < 0
+            val reductionPercent = exerciseStep?.percentChange?.let { Math.abs(it) } ?: 0.0
+            val hasExerciseReduction = reductionPercent > 0.0
             val adjustedCarbs = if (hasExerciseReduction) {
-                val reductionPercent = Math.abs(exerciseStep!!.percentChange!!)
                 (enteredCarbs * (1.0 - reductionPercent)).roundToInt()
             } else {
                 enteredCarbs.toInt()

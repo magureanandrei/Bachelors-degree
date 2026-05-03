@@ -20,15 +20,24 @@ class BaselineStep : AlgorithmStep {
         val targetBg = context.bolusSettings.targetBG.toDouble()
         var dose = 0.0
 
-        // Meal bolus — unchanged for all therapy types
-        if (context.plannedCarbs > 0 && currentIcr > 0) {
-            val mealBolus = context.plannedCarbs / currentIcr
+        // Meal bolus — reduce by hypoReservedCarbs if HypoGuardStep reserved some carbs for rescue
+        val hypoReservedCarbs = (state.metadata["hypoReservedCarbs"] as? Int) ?: 0
+        val effectiveCarbs = maxOf(0.0, context.plannedCarbs - hypoReservedCarbs)
+
+        if (effectiveCarbs > 0 && currentIcr > 0) {
+            val mealBolus = effectiveCarbs / currentIcr
             dose += mealBolus
+            val description = if (hypoReservedCarbs > 0 && effectiveCarbs < context.plannedCarbs) {
+                "Meal: ${String.format("%.1f", mealBolus)}U (${effectiveCarbs.toInt()}g ÷ ${String.format("%.1f", currentIcr)} ICR). " +
+                    "Bolus calculated only on ${effectiveCarbs.toInt()}g — ${hypoReservedCarbs}g reserved as hypo treatment."
+            } else {
+                "Meal: ${String.format("%.1f", mealBolus)}U (${context.plannedCarbs.toInt()}g ÷ ${String.format("%.1f", currentIcr)} ICR)."
+            }
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Meal Bolus",
                 emoji = "🍽️",
-                description = "Meal: ${String.format("%.1f", mealBolus)}U (${context.plannedCarbs.toInt()}g ÷ ${String.format("%.1f", currentIcr)} ICR).",
+                description = description,
                 effect = Effect.INCREASE,
                 valueChange = mealBolus,
                 runningTotal = dose
