@@ -344,24 +344,45 @@ class CalculateBolusViewModel(
         val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
         val carbs = state.carbs.toDoubleOrNull() ?: 0.0
         val dose = state.userAdjustedDose ?: state.calculatedDose
+        val currentSettings = settings.value
 
         viewModelScope.launch {
             if (state.isSportModeActive) {
                 // 1. Save CURRENT state (Insulin/BG)
                 if (bg > 0 || carbs > 0 || dose > 0) {
-                    val currentLog = BolusLog(
-                        timestamp = now,
-                        eventType = "SMART_BOLUS",
-                        status = "COMPLETED",
-                        bloodGlucose = bg, carbs = carbs,
-                        standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
-                        isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
-                        notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes,
-                        clinicalSuggestion = state.sportReductionLog,
-                        isHighStress = state.selectedFactor == "Stress",
-                        isIllness = state.selectedFactor == "Illness",
-                        isExtremeHeat = state.selectedFactor == "Heat"
-                    )
+                    val currentLog = if (currentSettings.isAidPump) {
+                        BolusLog(
+                            timestamp = now,
+                            eventType = "SMART_BOLUS",
+                            status = "COMPLETED",
+                            bloodGlucose = bg, carbs = 0.0,
+                            standardDose = 0.0, suggestedDose = 0.0, administeredDose = 0.0,
+                            isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
+                            notes = buildString {
+                                append("AID Advisory: ${carbs.toInt()}g carbs recommended for pump entry.")
+                                if (state.selectedFactor != "None") append(" [Factor: ${state.selectedFactor}]")
+                                if (state.notes.isNotBlank()) append(" ${state.notes}")
+                            }.trim(),
+                            clinicalSuggestion = state.sportReductionLog,
+                            isHighStress = state.selectedFactor == "Stress",
+                            isIllness = state.selectedFactor == "Illness",
+                            isExtremeHeat = state.selectedFactor == "Heat"
+                        )
+                    } else {
+                        BolusLog(
+                            timestamp = now,
+                            eventType = "SMART_BOLUS",
+                            status = "COMPLETED",
+                            bloodGlucose = bg, carbs = carbs,
+                            standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
+                            isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
+                            notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes,
+                            clinicalSuggestion = state.sportReductionLog,
+                            isHighStress = state.selectedFactor == "Stress",
+                            isIllness = state.selectedFactor == "Illness",
+                            isExtremeHeat = state.selectedFactor == "Heat"
+                        )
+                    }
                     repository.insert(currentLog)
                 }
 
@@ -388,27 +409,51 @@ class CalculateBolusViewModel(
 
             } else {
                 // Normal immediate log
-                val log = BolusLog(
-                    timestamp = now,
-                    eventType = "SMART_BOLUS",
-                    status = "COMPLETED",
-                    bloodGlucose = bg,
-                    carbs = carbs,
-                    standardDose = state.standardDose,
-                    suggestedDose = state.calculatedDose,
-                    administeredDose = dose,
-                    isSportModeActive = false,
-                    sportType = null,
-                    sportIntensity = null,
-                    sportDuration = null,
-                    clinicalSuggestion = state.sportReductionLog,
-                    // ADD THESE THREE LINES:
-                    isHighStress = state.selectedFactor == "Stress",
-                    isIllness = state.selectedFactor == "Illness",
-                    isExtremeHeat = state.selectedFactor == "Heat",
-                    // AND UPDATE THE NOTE:
-                    notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes
-                )
+                val log = if (currentSettings.isAidPump) {
+                    BolusLog(
+                        timestamp = now,
+                        eventType = "SMART_BOLUS",
+                        status = "COMPLETED",
+                        bloodGlucose = bg,
+                        carbs = 0.0,
+                        standardDose = 0.0,
+                        suggestedDose = 0.0,
+                        administeredDose = 0.0,
+                        isSportModeActive = false,
+                        sportType = null,
+                        sportIntensity = null,
+                        sportDuration = null,
+                        clinicalSuggestion = state.sportReductionLog,
+                        isHighStress = state.selectedFactor == "Stress",
+                        isIllness = state.selectedFactor == "Illness",
+                        isExtremeHeat = state.selectedFactor == "Heat",
+                        notes = buildString {
+                            append("AID Advisory: ${carbs.toInt()}g carbs recommended for pump entry.")
+                            if (state.selectedFactor != "None") append(" [Factor: ${state.selectedFactor}]")
+                            if (state.notes.isNotBlank()) append(" ${state.notes}")
+                        }.trim()
+                    )
+                } else {
+                    BolusLog(
+                        timestamp = now,
+                        eventType = "SMART_BOLUS",
+                        status = "COMPLETED",
+                        bloodGlucose = bg,
+                        carbs = carbs,
+                        standardDose = state.standardDose,
+                        suggestedDose = state.calculatedDose,
+                        administeredDose = dose,
+                        isSportModeActive = false,
+                        sportType = null,
+                        sportIntensity = null,
+                        sportDuration = null,
+                        clinicalSuggestion = state.sportReductionLog,
+                        isHighStress = state.selectedFactor == "Stress",
+                        isIllness = state.selectedFactor == "Illness",
+                        isExtremeHeat = state.selectedFactor == "Heat",
+                        notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes
+                    )
+                }
                 repository.insert(log)
             }
             resetForm()

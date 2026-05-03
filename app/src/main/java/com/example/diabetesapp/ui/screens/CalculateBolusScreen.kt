@@ -110,6 +110,7 @@ fun CalculateBolusScreen(
                     currentBG = inputState.bloodGlucose.toDoubleOrNull() ?: 0.0,
                     settings = settings,
                     rescueCarbs = inputState.rescueCarbs,
+                    selectedFactor = inputState.selectedFactor,
                     onAdjustDose = { delta -> viewModel.adjustSuggestedDose(delta) },
                     onDismiss = { viewModel.dismissResultDialog() },
                     onLogAndSave = {

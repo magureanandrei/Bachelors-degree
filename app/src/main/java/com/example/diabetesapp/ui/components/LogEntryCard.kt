@@ -264,8 +264,19 @@ fun LogEntryCard(
                             )
                         } else {
                             // Normal bolus
+                            val isAidAdvisory = log.eventType == "SMART_BOLUS" && log.notes?.startsWith("AID Advisory") == true
                             Column(horizontalAlignment = Alignment.End) {
-                                if (log.administeredDose > 0) {
+                                if (isAidAdvisory) {
+                                    Text(
+                                        "Advisory",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF00695C),
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier
+                                            .background(Color(0xFFE0F2F1), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                } else if (log.administeredDose > 0) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
                                             Text(
@@ -347,12 +358,13 @@ fun LogEntryCard(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-// Replaced with shared DoseBreakdownCard
                     if (!log.clinicalSuggestion.isNullOrBlank()) {
+                        val isAidAdvisoryEntry = log.eventType == "SMART_BOLUS" && log.notes?.startsWith("AID Advisory") == true
                         DoseBreakdownCard(
                             standardDose = log.standardDose ?: 0.0,
                             suggestedDose = log.suggestedDose ?: 0.0,
-                            rationale = log.clinicalSuggestion
+                            rationale = log.clinicalSuggestion,
+                            isAid = isAidAdvisoryEntry
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }

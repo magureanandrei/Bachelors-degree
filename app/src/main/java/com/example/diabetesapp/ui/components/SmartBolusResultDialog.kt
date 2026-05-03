@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,6 +44,7 @@ fun SmartBolusResultDialog(
     currentBG: Double = 0.0,
     settings: BolusSettings = BolusSettings(),
     rescueCarbs: Int = 0,
+    selectedFactor: String = "None",
     onAdjustDose: (Double) -> Unit,
     onDismiss: () -> Unit,
     onLogAndSave: () -> Unit
@@ -86,7 +88,8 @@ fun SmartBolusResultDialog(
                         settings = settings,
                         rescueCarbs = rescueCarbs,
                         sportLog = sportLog,
-                        breakdownSteps = breakdownSteps
+                        breakdownSteps = breakdownSteps,
+                        selectedFactor = selectedFactor
                     )
                 } else {
                     Card(
@@ -194,13 +197,25 @@ private fun AidResultContent(
     settings: BolusSettings,
     rescueCarbs: Int,
     sportLog: String,
-    breakdownSteps: List<BreakdownEntry>
+    breakdownSteps: List<BreakdownEntry>,
+    selectedFactor: String = "None"
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (enteredCarbs > 0) {
-            val originalMealDose = enteredCarbs / settings.getCurrentIcr()
-            val carbRatio = if (originalMealDose > 0) calculatedDose / originalMealDose else 1.0
-            val adjustedCarbs = (enteredCarbs * carbRatio.coerceIn(0.0, 1.0)).roundToInt()
+            val exerciseStep = breakdownSteps.firstOrNull {
+                it.stepName == "Contextual Modifier" &&
+                (it.label.contains("Sport", ignoreCase = true) ||
+                 it.label.contains("Exercise", ignoreCase = true) ||
+                 it.label.contains("Walk", ignoreCase = true) ||
+                 it.label.contains("Recovery", ignoreCase = true))
+            }
+            val hasExerciseReduction = exerciseStep != null && (exerciseStep.percentChange ?: 0.0) < 0
+            val adjustedCarbs = if (hasExerciseReduction) {
+                val reductionPercent = Math.abs(exerciseStep!!.percentChange!!)
+                (enteredCarbs * (1.0 - reductionPercent)).roundToInt()
+            } else {
+                enteredCarbs.toInt()
+            }
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -234,6 +249,69 @@ private fun AidResultContent(
                         fontSize = 12.sp,
                         color = Color(0xFF546E7A)
                     )
+                }
+            }
+
+            if (selectedFactor == "Illness") {
+                val suggestedCarbs = (enteredCarbs * 1.25).toInt()
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("⚠️ Illness Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
+                        Text(
+                            "Illness increases insulin resistance by 20–50% (ISPAD). Your pump's normal dosing may be insufficient. Enter your actual carbs — monitor BG closely after the meal. If BG remains elevated after 2–3 hours, consider a manual pen correction.",
+                            fontSize = 12.sp, color = Color(0xFF546E7A), lineHeight = 16.sp
+                        )
+                        Text(
+                            "Consider entering up to ${suggestedCarbs}g carbs to increase coverage.",
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100)
+                        )
+                    }
+                }
+            }
+
+            if (selectedFactor == "Stress") {
+                val suggestedCarbs = (enteredCarbs * 1.15).toInt()
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("⚠️ Stress Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
+                        Text(
+                            "Stress increases insulin resistance. Monitor BG after this meal — you may need additional correction.",
+                            fontSize = 12.sp, color = Color(0xFF546E7A), lineHeight = 16.sp
+                        )
+                        Text(
+                            "Consider entering up to ${suggestedCarbs}g carbs.",
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100)
+                        )
+                    }
+                }
+            }
+
+            if (selectedFactor == "Heat") {
+                val suggestedCarbs = (enteredCarbs * 0.90).toInt()
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("⚠️ Heat Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
+                        Text(
+                            "High temperature accelerates insulin absorption. Your pump's dose may act faster than expected. Watch for unexpected lows after this meal.",
+                            fontSize = 12.sp, color = Color(0xFF546E7A), lineHeight = 16.sp
+                        )
+                        Text(
+                            "Consider entering only ${suggestedCarbs}g carbs — heat accelerates insulin absorption.",
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100)
+                        )
+                    }
                 }
             }
         } else {
@@ -333,5 +411,13 @@ private fun AidResultContent(
                 isAid = true
             )
         }
+
+        Text(
+            "ℹ️ This advice assumes your pump settings (ICR, ISF, target) are correctly configured. If recommendations seem off, review your settings.",
+            fontSize = 11.sp,
+            color = Color.Gray,
+            fontStyle = FontStyle.Italic,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
