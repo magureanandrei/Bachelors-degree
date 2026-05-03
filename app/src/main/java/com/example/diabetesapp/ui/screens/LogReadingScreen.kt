@@ -325,6 +325,14 @@ fun LogReadingScreen(
                                 unit = "U",
                                 placeholder = "0.0"
                             )
+                            if (settings.isAidPump) {
+                                Text(
+                                    "For emergency corrections only. This bypasses your pump.",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray,
+                                    lineHeight = 16.sp
+                                )
+                            }
                             if (settings.isMdi) {
                                 LargeInputField(
                                     label = "Basal Dose (${settings.basalInsulinType.displayName})",

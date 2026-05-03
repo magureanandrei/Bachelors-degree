@@ -8,10 +8,7 @@ import com.example.diabetesapp.data.models.BgFetchStatus
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.repository.BolusLogRepository
-import com.example.diabetesapp.data.models.CgmTrend
-import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
-import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -236,42 +233,32 @@ class LogReadingViewModel(
             return
         }
 
-        val currentSettings = settings.value
-        val context = PatientContext(
-            therapyType = currentSettings.therapyTypeEnum,
-            bolusSettings = currentSettings,
-            currentBG = bg,
-            hasCGM = currentSettings.isCgmEnabled,
-            cgmTrend = CgmTrend.NONE,
-            activeInsulinIOB = insulin,
-            plannedCarbs = carbs,
-            isDoingSport = state.isSportModeActive,
-            sportType = state.sportType,
-            sportIntensity = state.sportIntensityValue.toInt(),
-            sportDurationMins = state.sportDurationMinutes.toInt(),
-            minutesUntilSport = 0,
-            timeOfDay = LocalTime.now(),
-            dailySteps = 0L
-        )
+        val contextMessage = when {
+            state.isSportModeActive -> {
+                val base = "Sport logged: ${state.sportType}, ${state.sportDurationMinutes.toInt()} min, ${state.sportIntensity} intensity."
+                if (settings.value.isAidPump) "$base Consider activating Exercise Target on your pump."
+                else base
+            }
+            bg > 0 && carbs == 0.0 && insulin == 0.0 -> "BG check logged: ${bg.toInt()} mg/dL."
+            carbs > 0 && insulin == 0.0 -> "Meal logged: ${carbs.toInt()}g carbs."
+            settings.value.isAidPump && insulin > 0 -> "Pen correction logged: ${insulin}U."
+            insulin > 0 -> "Manual insulin logged: ${insulin}U."
+            else -> "Event logged."
+        }
 
-        val decision = AlgorithmEngine.calculateClinicalAdvice(context)
-
-        val insight = when {
-            decision.suggestedRescueCarbs > 0 && carbs < decision.suggestedRescueCarbs ->
-                LogInsight(InsightType.WARNING, "Action Required", decision.clinicalRationale.ifBlank { "You need fast-acting carbs to prevent a low." })
-            state.isSportModeActive && decision.clinicalRationale.contains("Late-Onset") ->
-                LogInsight(InsightType.WARNING, "Post-Sport Alert", decision.clinicalRationale)
-            decision.suggestedInsulinDose > 0.5 && insulin == 0.0 ->
-                LogInsight(InsightType.SUGGESTION, "Insulin Recommended", "The algorithm suggests ${decision.suggestedInsulinDose}U. Consider adjusting your log if you took insulin.")
-            decision.clinicalRationale.isNotBlank() ->
-                LogInsight(InsightType.SUGGESTION, "Insight", decision.clinicalRationale)
-            else ->
-                LogInsight(InsightType.ON_TRACK, "Looking Good!", "Everything is perfectly on track.")
+        val insightType = if (state.isSportModeActive && settings.value.isAidPump) InsightType.SUGGESTION else InsightType.ON_TRACK
+        val insightTitle = when {
+            state.isSportModeActive -> "Sport Event Logged"
+            bg > 0 && carbs == 0.0 && insulin == 0.0 -> "BG Recorded"
+            carbs > 0 && insulin == 0.0 -> "Meal Logged"
+            settings.value.isAidPump && insulin > 0 -> "Pen Correction Logged"
+            insulin > 0 -> "Insulin Recorded"
+            else -> "Event Logged"
         }
 
         _uiState.value = _uiState.value.copy(
-            currentInsight = insight,
-            pendingClinicalSuggestion = decision.clinicalRationale.takeIf { it.isNotBlank() }
+            currentInsight = LogInsight(insightType, insightTitle, contextMessage),
+            pendingClinicalSuggestion = contextMessage
         )
     }
 

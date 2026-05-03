@@ -64,6 +64,7 @@ data class BolusInputState(
 
     val sportReductionLog: String = "",
     val breakdownSteps: List<BreakdownEntry> = emptyList(),
+    val rescueCarbs: Int = 0,
 
     val bloodGlucoseError: String? = null,
     val carbsError: String? = null,
@@ -327,6 +328,7 @@ class CalculateBolusViewModel(
                 userAdjustedDose = decision.suggestedInsulinDose,
                 sportReductionLog = decision.clinicalRationale,
                 breakdownSteps = decision.breakdownSteps,
+                rescueCarbs = decision.suggestedRescueCarbs,
                 warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
                 showResult = true,
                 showResultDialog = showDialog

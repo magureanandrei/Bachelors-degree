@@ -133,12 +133,32 @@ fun DoseBreakdownCard(
                     }
                 }
             } else {
-                Text(
-                    text = rationale.ifEmpty { "Standard calculation applied. No active modifiers." },
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    color = Color.DarkGray
-                )
+                val paragraphs = rationale.split("\n\n").filter { it.isNotBlank() }
+                if (paragraphs.isEmpty()) {
+                    Text(
+                        text = "Standard calculation applied. No active modifiers.",
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = Color.DarkGray
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 250.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        paragraphs.forEach { paragraph ->
+                            Text(
+                                text = paragraph.trim(),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
+                }
             }
         }
     }

@@ -106,12 +106,16 @@ fun CalculateBolusScreen(
                     sportLog = inputState.sportReductionLog,
                     breakdownSteps = inputState.breakdownSteps,
                     isAid = settings.isAidPump,
+                    enteredCarbs = inputState.carbs.toDoubleOrNull() ?: 0.0,
+                    currentBG = inputState.bloodGlucose.toDoubleOrNull() ?: 0.0,
+                    settings = settings,
+                    rescueCarbs = inputState.rescueCarbs,
                     onAdjustDose = { delta -> viewModel.adjustSuggestedDose(delta) },
                     onDismiss = { viewModel.dismissResultDialog() },
                     onLogAndSave = {
                         viewModel.logEntry(context)
                         viewModel.dismissResultDialog()
-                        onNavigateBack() // Navigate Back to Home
+                        onNavigateBack()
                     }
                 )
             }
