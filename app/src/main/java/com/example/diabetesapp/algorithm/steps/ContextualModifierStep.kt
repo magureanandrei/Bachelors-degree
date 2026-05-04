@@ -230,39 +230,41 @@ class ContextualModifierStep : AlgorithmStep {
         }
 
         // D. Apply new dose
-        if (mealBolus > 0.0 || correctionBolus > 0.0) {
-            val newDose = reducedMeal + reducedCorrection
-            val mealReductionAmount = mealBolus * totalMealReduction
-            val reductionPct = String.format("%.0f", totalMealReduction * 100)
-            val description = if (mealBolus > 0) {
-                "${context.sportType}: −$reductionPct% meal. " +
-                    "Meal component: −${String.format("%.2f", mealReductionAmount)}U."
-            } else {
-                "${context.sportType}: sport adjustment applied."
+        if (!context.bolusSettings.isAidPump) {
+            if (mealBolus > 0.0 || correctionBolus > 0.0) {
+                val newDose = reducedMeal + reducedCorrection
+                val mealReductionAmount = mealBolus * totalMealReduction
+                val reductionPct = String.format("%.0f", totalMealReduction * 100)
+                val description = if (mealBolus > 0) {
+                    "${context.sportType}: −$reductionPct% meal. " +
+                        "Meal component: −${String.format("%.2f", mealReductionAmount)}U."
+                } else {
+                    "${context.sportType}: sport adjustment applied."
+                }
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Sport Reduction",
+                    emoji = "",
+                    description = description,
+                    effect = Effect.DECREASE,
+                    percentChange = -totalMealReduction,
+                    valueChange = -mealReductionAmount,
+                    runningTotal = newDose
+                )).copy(currentDose = newDose)
+            } else if (state.currentDose > 0) {
+                val newDose = state.currentDose * (1.0 - totalMealReduction)
+                val reductionPct = String.format("%.0f", totalMealReduction * 100)
+                result = result.addEntry(BreakdownEntry(
+                    stepName = name,
+                    label = "Sport Reduction",
+                    emoji = "",
+                    description = "${context.sportType}: −$reductionPct% reduction.",
+                    effect = Effect.DECREASE,
+                    percentChange = -totalMealReduction,
+                    valueChange = -(state.currentDose * totalMealReduction),
+                    runningTotal = newDose
+                )).copy(currentDose = newDose)
             }
-            result = result.addEntry(BreakdownEntry(
-                stepName = name,
-                label = "Sport Reduction",
-                emoji = "",
-                description = description,
-                effect = Effect.DECREASE,
-                percentChange = -totalMealReduction,
-                valueChange = -mealReductionAmount,
-                runningTotal = newDose
-            )).copy(currentDose = newDose)
-        } else if (state.currentDose > 0) {
-            val newDose = state.currentDose * (1.0 - totalMealReduction)
-            val reductionPct = String.format("%.0f", totalMealReduction * 100)
-            result = result.addEntry(BreakdownEntry(
-                stepName = name,
-                label = "Sport Reduction",
-                emoji = "",
-                description = "${context.sportType}: −$reductionPct% reduction.",
-                effect = Effect.DECREASE,
-                percentChange = -totalMealReduction,
-                valueChange = -(state.currentDose * totalMealReduction),
-                runningTotal = newDose
-            )).copy(currentDose = newDose)
         }
 
         // E. Therapy-specific advice
@@ -376,7 +378,19 @@ class ContextualModifierStep : AlgorithmStep {
                 if (context.plannedCarbs > 0.0) {
                     when {
                         !aidCarbReductionActive && context.currentBG < context.bolusSettings.hypoLimit.toDouble() -> {
-                            // Skip — hypo guard already explains carb handling
+                            // Hypo active — don't show visible carb reduction entry, but write a hidden
+                            // carrier entry so AidResultContent can still apply sport reduction to excess carbs
+                            if (aidCarbReductionPercent > 0.0) {
+                                result = result.addEntry(BreakdownEntry(
+                                    stepName = name,
+                                    label = "Meal Carb Adjustment (AID)",
+                                    emoji = "",
+                                    description = "", // blank — hypo guard entry already covers this
+                                    effect = Effect.NEUTRAL,
+                                    percentChange = -aidCarbReductionPercent,
+                                    runningTotal = result.currentDose
+                                ))
+                            }
                         }
                         !aidCarbReductionActive && result.rescueCarbs == 0 -> {
                             result = result.addEntry(BreakdownEntry(

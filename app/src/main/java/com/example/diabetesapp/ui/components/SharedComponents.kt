@@ -94,7 +94,8 @@ fun DoseBreakdownCard(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    breakdownSteps.forEachIndexed { index, entry ->
+                    val visibleSteps = breakdownSteps.filter { it.description.isNotBlank() }
+                    visibleSteps.forEachIndexed { index, entry ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -119,7 +120,7 @@ fun DoseBreakdownCard(
                                 )
                             }
                         }
-                        if (index < breakdownSteps.lastIndex) {
+                        if (index < visibleSteps.lastIndex) {
                             HorizontalDivider(
                                 color = Color(0xFF80CBC4).copy(alpha = 0.3f),
                                 thickness = 0.5.dp

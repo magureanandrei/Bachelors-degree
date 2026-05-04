@@ -243,11 +243,22 @@ private fun AidResultContent(
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF00695C)
                         )
-                        if (aidCarbReductionPercent > 0.0) {
+                        val subtitleText = when {
+                            hypoReservedCarbs > 0 && aidCarbReductionPercent > 0.0 ->
+                                "instead of ${enteredCarbs.toInt()}g — ${hypoReservedCarbs}g reserved as hypo treatment, " +
+                                        "remaining ${effectiveCarbs.toInt()}g reduced ${(aidCarbReductionPercent * 100).toInt()}% for exercise"
+                            hypoReservedCarbs > 0 ->
+                                "instead of ${enteredCarbs.toInt()}g — ${hypoReservedCarbs}g reserved as hypo treatment"
+                            aidCarbReductionPercent > 0.0 ->
+                                "instead of ${enteredCarbs.toInt()}g — reduced ${(aidCarbReductionPercent * 100).toInt()}% for exercise (Moser 2025)"
+                            else -> null
+                        }
+                        if (subtitleText != null) {
                             Text(
-                                "instead of ${enteredCarbs.toInt()}g — reduced for exercise",
+                                subtitleText,
                                 fontSize = 12.sp,
-                                color = Color.Gray
+                                color = Color.Gray,
+                                lineHeight = 16.sp
                             )
                         }
                         Spacer(modifier = Modifier.height(2.dp))
