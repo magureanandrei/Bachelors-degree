@@ -99,11 +99,6 @@ fun DoseBreakdownCard(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = entry.emoji,
-                                fontSize = 16.sp,
-                                modifier = Modifier.width(24.dp)
-                            )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = entry.label,

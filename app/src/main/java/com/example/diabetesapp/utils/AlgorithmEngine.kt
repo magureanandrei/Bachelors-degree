@@ -33,7 +33,10 @@ object AlgorithmEngine {
         )
     )
 
-    fun calculateClinicalAdvice(context: PatientContext): ClinicalDecision {
-        return pipeline.execute(context)
+    fun calculateClinicalAdvice(
+        context: PatientContext,
+        initialMetadata: Map<String, Any> = emptyMap()
+    ): ClinicalDecision {
+        return pipeline.execute(context, initialMetadata)
     }
 }

@@ -3,6 +3,9 @@ package com.example.diabetesapp.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,7 +43,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diabetesapp.data.models.BolusLog
-import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -359,13 +361,26 @@ fun LogEntryCard(
                     }
 
                     if (!log.clinicalSuggestion.isNullOrBlank()) {
-                        val isAidAdvisoryEntry = log.eventType == "SMART_BOLUS" && log.notes?.startsWith("AID Advisory") == true
-                        DoseBreakdownCard(
-                            standardDose = log.standardDose ?: 0.0,
-                            suggestedDose = log.suggestedDose ?: 0.0,
-                            rationale = log.clinicalSuggestion,
-                            isAid = isAidAdvisoryEntry
-                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 200.dp)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = log.clinicalSuggestion ?: "",
+                                    fontSize = 13.sp,
+                                    lineHeight = 20.sp,
+                                    color = Color.DarkGray
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 

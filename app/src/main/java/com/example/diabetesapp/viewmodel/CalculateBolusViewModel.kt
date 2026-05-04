@@ -13,13 +13,16 @@ import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip
+import com.example.diabetesapp.utils.IobCalculator
 import com.example.diabetesapp.utils.WorkoutNotificationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,7 +96,38 @@ class CalculateBolusViewModel(
         BolusSettings()
     )
 
-    init { updateCurrentDateTime() }
+    init {
+        updateCurrentDateTime()
+        viewModelScope.launch {
+            settings
+                .filter { it.durationOfAction > 0 }
+                .take(1)
+                .collect { recalculateIob() }
+        }
+    }
+
+    private fun recalculateIob() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val logs = repository.getAllLogsImmediate()
+            val currentSettings = settings.value
+            val latestReading = if (currentSettings.isCgmEnabled) {
+                try { getLatestBgFromXDrip() } catch (e: Exception) { null }
+            } else null
+            val result = IobCalculator.calculate(
+                logs = logs,
+                settings = currentSettings,
+                xdripIob = latestReading?.iob,
+                xdripTimestamp = latestReading?.timestamp
+            )
+            withContext(Dispatchers.Main) {
+                _inputState.value = _inputState.value.copy(
+                    activeInsulin = if (result.totalIob > 0.01)
+                        String.format("%.1f", result.totalIob)
+                    else ""
+                )
+            }
+        }
+    }
 
     private fun updateCurrentDateTime() {
         val now = LocalDateTime.now()
@@ -320,7 +354,16 @@ class CalculateBolusViewModel(
                 lastExerciseDurationMins = lastExerciseDurationMins
             )
 
-            val decision = AlgorithmEngine.calculateClinicalAdvice(context)
+            val recentPenDose = withContext(Dispatchers.IO) {
+                val cutoff = System.currentTimeMillis() -
+                    (currentSettings.durationOfAction * 60 * 60 * 1000).toLong()
+                repository.getPenLogsAfter(cutoff).sumOf { it.administeredDose }
+            }
+
+            val decision = AlgorithmEngine.calculateClinicalAdvice(
+                context,
+                mapOf("recentManualPenDose" to recentPenDose)
+            )
 
             val standardDose = if (currentSettings.isAidPump) {
                 context.plannedCarbs / currentSettings.getCurrentIcr()
@@ -332,10 +375,12 @@ class CalculateBolusViewModel(
                 standardDose = standardDose,
                 calculatedDose = decision.suggestedInsulinDose,
                 userAdjustedDose = decision.suggestedInsulinDose,
-                sportReductionLog = decision.clinicalRationale,
+                sportReductionLog = decision.breakdownSteps
+                    .filter { it.description.isNotBlank() }
+                    .joinToString("\n\n") { "${it.label}\n${it.description}" },
                 breakdownSteps = decision.breakdownSteps,
                 rescueCarbs = decision.suggestedRescueCarbs,
-                warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
+                warningMessage = if (decision.suggestedRescueCarbs > 0) "Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
                 showResult = true,
                 showResultDialog = showDialog
             )

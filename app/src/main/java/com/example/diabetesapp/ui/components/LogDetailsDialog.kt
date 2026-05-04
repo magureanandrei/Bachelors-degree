@@ -6,7 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -113,14 +119,33 @@ fun LogDetailsDialog(
                 }
 
                 if (!log.clinicalSuggestion.isNullOrBlank()) {
-                    val isAidAdvisoryForRationale = log.eventType == "SMART_BOLUS" && log.notes?.startsWith("AID Advisory") == true
                     Spacer(modifier = Modifier.height(8.dp))
-                    DoseBreakdownCard(
-                        standardDose = log.standardDose ?: 0.0,
-                        suggestedDose = log.suggestedDose ?: 0.0,
-                        rationale = log.clinicalSuggestion,
-                        isAid = isAidAdvisoryForRationale
-                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = "Algorithm Rationale",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32),
+                                fontSize = 15.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = log.clinicalSuggestion ?: "",
+                                fontSize = 13.sp,
+                                lineHeight = 20.sp,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
                 }
             }
         },

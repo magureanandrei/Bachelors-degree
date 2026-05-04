@@ -345,7 +345,7 @@ fun SmartBolus(
                         fontSize = 14.sp
                     )
                     Column {
-                        Text("🏃‍♂️ Aerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
+                        Text("Aerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                         Text("Continuous cardio (running, cycling, swimming). Rapidly burns glucose. Requires the largest reduction in insulin to prevent severe lows.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                     Column {
@@ -353,7 +353,7 @@ fun SmartBolus(
                         Text("Stop-and-go sports (soccer, basketball, tennis). A mix of cardio and adrenaline. Requires a moderate, balanced insulin approach.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                     Column {
-                        Text("🏋️‍♂️ Anaerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
+                        Text("Anaerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                         Text("Short, intense bursts (weightlifting, sprinting). Adrenaline spikes can actually RAISE your BG temporarily. Requires minimal insulin reduction.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                 }

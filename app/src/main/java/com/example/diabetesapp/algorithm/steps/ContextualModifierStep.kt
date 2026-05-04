@@ -3,6 +3,7 @@ package com.example.diabetesapp.algorithm.steps
 import com.example.diabetesapp.algorithm.*
 import com.example.diabetesapp.data.models.PatientContext
 import com.example.diabetesapp.data.models.TherapyType
+import kotlin.math.roundToInt
 
 /**
  * Step 4: Contextual Modifier (Dominant Architecture)
@@ -73,7 +74,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Check Ketones Before Exercise",
-                emoji = "🚨",
+                emoji = "",
                 description = "BG exceeds 300 mg/dL. Check blood ketones before exercising. " +
                     "If ketones are ≥1.5 mmol/L, exercise is contraindicated (ISPAD). " +
                     "If ketones are 0.6–1.4 mmol/L, postpone until corrective insulin is administered.",
@@ -124,7 +125,7 @@ class ContextualModifierStep : AlgorithmStep {
                     result = result.addEntry(BreakdownEntry(
                         stepName = name,
                         label = "Correction Withheld",
-                        emoji = "🏃",
+                        emoji = "",
                         description = "Correction withheld. Aerobic exercise will serve as a natural correction.",
                         effect = Effect.NEUTRAL,
                         runningTotal = result.currentDose
@@ -138,7 +139,7 @@ class ContextualModifierStep : AlgorithmStep {
                     result = result.addEntry(BreakdownEntry(
                         stepName = name,
                         label = "Reduced Correction (High BG + Aerobic)",
-                        emoji = "⚠️",
+                        emoji = "",
                         description = "50% correction applied. BG is very high alongside exercise.",
                         effect = Effect.DECREASE,
                         runningTotal = result.currentDose
@@ -150,7 +151,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Reduced Correction (Mixed Exercise)",
-                    emoji = "🏋️",
+                    emoji = "",
                     description = "50% correction. Mixed exercise has variable BG effects.",
                     effect = Effect.DECREASE,
                     runningTotal = result.currentDose
@@ -160,7 +161,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Full Correction (Anaerobic)",
-                    emoji = "🏋️",
+                    emoji = "",
                     description = "Full correction maintained. Anaerobic exercise does not reliably lower BG.",
                     effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
@@ -182,7 +183,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Sport Reduction",
-                emoji = "🏃",
+                emoji = "",
                 description = description,
                 effect = Effect.DECREASE,
                 percentChange = -totalMealReduction,
@@ -195,7 +196,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Sport Reduction",
-                emoji = "🏃",
+                emoji = "",
                 description = "${context.sportType}: −$reductionPct% reduction.",
                 effect = Effect.DECREASE,
                 percentChange = -totalMealReduction,
@@ -213,7 +214,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Pre-Exercise Carbohydrates (MDI)",
-                    emoji = "🍞",
+                    emoji = "",
                     description = "Your long-acting basal insulin cannot be suspended. " +
                         "Consume ${carbs}g of carbohydrates before exercise to prevent hypoglycemia.",
                     effect = Effect.NEUTRAL,
@@ -223,7 +224,7 @@ class ContextualModifierStep : AlgorithmStep {
                     result = result.addEntry(BreakdownEntry(
                         stepName = name,
                         label = "Basal Dose Adjustment",
-                        emoji = "💉",
+                        emoji = "",
                         description = "Consider reducing your next basal insulin dose by 20% " +
                             "to reduce the risk of delayed nocturnal hypoglycemia (ISPAD).",
                         effect = Effect.NEUTRAL,
@@ -235,9 +236,9 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Temp Basal Recommendation",
-                    emoji = "⚙️",
+                    emoji = "",
                     description = "Set a temporary basal rate of 50% starting 60–90 minutes before exercise " +
-                        "and maintain throughout the activity (Zaharieva 2017).",
+                        "and maintain throughout the activity",
                     effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
                 ))
@@ -249,7 +250,7 @@ class ContextualModifierStep : AlgorithmStep {
                         .addEntry(BreakdownEntry(
                             stepName = name,
                             label = "Pre-Exercise Carbohydrates",
-                            emoji = "🍞",
+                            emoji = "",
                             description = "Consider consuming ${carbs}g carbohydrates in addition to " +
                                 "setting a reduced temp basal.",
                             effect = Effect.NEUTRAL,
@@ -274,7 +275,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Exercise Target",
-                    emoji = "🎯",
+                    emoji = "",
                     description = "$targetAdvice Consider bolusing for only 67–75% of your planned carbohydrates.",
                     effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
@@ -284,12 +285,82 @@ class ContextualModifierStep : AlgorithmStep {
                         .addEntry(BreakdownEntry(
                             stepName = name,
                             label = "Pre-Exercise Carbohydrates",
-                            emoji = "🍞",
+                            emoji = "",
                             description = "BG is below 100 mg/dL. Consider 10g of fast-acting " +
                                 "carbohydrates without additional insulin before starting exercise.",
                             effect = Effect.NEUTRAL,
                             runningTotal = result.currentDose
                         ))
+                }
+
+                // AID meal carb reduction per Moser et al. 2025 EASD/ISPAD position statement.
+                // Only applies when exercise is within 2 hours of the meal.
+                val aidCarbReductionPercent = when {
+                    context.currentBG < context.bolusSettings.hypoLimit.toDouble() -> 0.0
+                    context.currentBG > context.bolusSettings.hyperLimit.toDouble() -> 0.0
+                    context.sportType == "Anaerobic" -> 0.0
+                    context.minutesUntilSport > 120 -> 0.0
+                    context.sportType in listOf("Aerobic", "Mixed", "Walking", "Running", "Cycling", "Swimming") ->
+                        when (context.sportIntensity) {
+                            3 -> 0.33
+                            2 -> 0.30
+                            else -> 0.25
+                        }
+                    else -> 0.0
+                }
+                result = result.withMeta("aidCarbReductionPercent", aidCarbReductionPercent)
+
+                if (context.plannedCarbs > 0.0 && aidCarbReductionPercent > 0.0) {
+                    val originalCarbs = context.plannedCarbs.toInt()
+                    val reducedCarbs = (context.plannedCarbs * (1.0 - aidCarbReductionPercent)).roundToInt()
+                    val pct = (aidCarbReductionPercent * 100).toInt()
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Meal Carb Adjustment (AID)",
+                        emoji = "",
+                        description = "Exercise within 2 hours of meal. Enter ${reducedCarbs}g into pump " +
+                            "instead of ${originalCarbs}g (−${pct}% per Moser et al. 2025 EASD/ISPAD " +
+                            "guidelines). Your pump will calculate the appropriate insulin dose from the " +
+                            "adjusted carb entry.",
+                        effect = Effect.DECREASE,
+                        percentChange = -aidCarbReductionPercent,
+                        runningTotal = result.currentDose
+                    ))
+                } else if (context.plannedCarbs > 0.0
+                    && context.currentBG > context.bolusSettings.hyperLimit.toDouble()
+                    && result.rescueCarbs == 0
+                ) {
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Carb Reduction Withheld (High BG)",
+                        emoji = "",
+                        description = "BG is ${context.currentBG.toInt()} mg/dL — above your high limit. " +
+                            "Full carb entry recommended. Your pump's SmartGuard will manage the correction. " +
+                            "Do not under-report carbs when BG is elevated, as this may cause the pump to " +
+                            "under-dose your meal.",
+                        effect = Effect.NEUTRAL,
+                        runningTotal = result.currentDose
+                    ))
+                } else if (context.plannedCarbs > 0.0
+                    && context.minutesUntilSport <= 120
+                    && result.rescueCarbs == 0
+                    && context.currentBG <= context.bolusSettings.hyperLimit.toDouble()
+                    && context.currentBG >= context.bolusSettings.hypoLimit.toDouble()
+                ) {
+                    val reason = when {
+                        context.sportType == "Anaerobic" ->
+                            "Anaerobic exercise: no carb reduction applied. " +
+                            "Your pump handles the glycemia response."
+                        else -> "No carb reduction applicable for current sport context."
+                    }
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Meal Carb Adjustment (AID)",
+                        emoji = "",
+                        description = reason,
+                        effect = Effect.NEUTRAL,
+                        runningTotal = result.currentDose
+                    ))
                 }
             }
         }
@@ -299,7 +370,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "High Active Insulin",
-                emoji = "⚠️",
+                emoji = "",
                 description = "High active insulin (${String.format("%.1f", context.activeInsulinIOB)}U). " +
                     "Exercise will increase insulin sensitivity. Consider extra fast-acting carbohydrates " +
                     "without additional insulin.",
@@ -315,7 +386,7 @@ class ContextualModifierStep : AlgorithmStep {
                     .addEntry(BreakdownEntry(
                         stepName = name,
                         label = "Post-Workout Low",
-                        emoji = "⚠️",
+                        emoji = "",
                         description = "Post-workout BG is low. Consume 15g fast-acting carbohydrates.",
                         effect = Effect.WARNING,
                         runningTotal = result.currentDose
@@ -333,7 +404,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Late-Onset Hypoglycemia Risk",
-                    emoji = "🌙",
+                    emoji = "",
                     description = warning,
                     effect = Effect.WARNING,
                     runningTotal = result.currentDose
@@ -358,7 +429,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Post-Exercise Meal Reduction",
-                    emoji = "🏃",
+                    emoji = "",
                     description = "Post-exercise meal reduction: 50%. Insulin sensitivity is elevated " +
                         "after today's exercise (Diabetologia 2023).",
                     effect = Effect.DECREASE,
@@ -371,7 +442,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Post-Exercise Correction Reduction",
-                    emoji = "🏃",
+                    emoji = "",
                     description = "Post-exercise correction: 50%. ISPAD recommends conservative " +
                         "corrections following exercise.",
                     effect = Effect.DECREASE,
@@ -386,7 +457,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Post-Exercise Dose Reduction",
-                emoji = "🏃",
+                emoji = "",
                 description = "Post-exercise 50% dose reduction. Insulin sensitivity is elevated " +
                     "after today's exercise.",
                 effect = Effect.DECREASE,
@@ -400,7 +471,7 @@ class ContextualModifierStep : AlgorithmStep {
             TherapyType.MDI -> result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Post-Exercise Basal Advice",
-                emoji = "💉",
+                emoji = "",
                 description = "Consider reducing your next basal dose by 20% (ISPAD). Monitor closely.",
                 effect = Effect.NEUTRAL,
                 runningTotal = result.currentDose
@@ -408,7 +479,7 @@ class ContextualModifierStep : AlgorithmStep {
             TherapyType.PUMP_STANDARD -> result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Post-Exercise Temp Basal",
-                emoji = "⚙️",
+                emoji = "",
                 description = "Consider a temp basal of 90% for 4–6 hours post-exercise (Zaharieva 2017).",
                 effect = Effect.NEUTRAL,
                 runningTotal = result.currentDose
@@ -419,7 +490,7 @@ class ContextualModifierStep : AlgorithmStep {
                     result = result.addEntry(BreakdownEntry(
                         stepName = name,
                         label = "Extend Exercise Target",
-                        emoji = "🎯",
+                        emoji = "",
                         description = "Consider keeping your Exercise/Activity target active for " +
                             "2–3 hours after aerobic or mixed exercise to prevent rebound hypoglycemia.",
                         effect = Effect.NEUTRAL,
@@ -429,7 +500,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Post-Exercise Monitoring",
-                    emoji = "👀",
+                    emoji = "",
                     description = "Insulin sensitivity is elevated after exercise. Monitor glucose closely. " +
                         "Consider carbohydrate intake without additional insulin if BG is borderline.",
                     effect = Effect.NEUTRAL,
@@ -440,7 +511,7 @@ class ContextualModifierStep : AlgorithmStep {
                         .addEntry(BreakdownEntry(
                             stepName = name,
                             label = "Post-Exercise Carbohydrates",
-                            emoji = "🍞",
+                            emoji = "",
                             description = "BG is ${context.currentBG.toInt()} mg/dL post-exercise. " +
                                 "Consider 15g carbohydrates without additional insulin.",
                             effect = Effect.NEUTRAL,
@@ -480,7 +551,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Post-Walk Recovery",
-                emoji = "🚶",
+                emoji = "",
                 description = "Insulin sensitivity is elevated after your ${duration}-minute walk. " +
                     "Meal and correction reduced by ${(reductionPercent * 100).toInt()}%. " +
                     "Walking has the lowest nocturnal hypoglycemia risk of all exercise types.",
@@ -495,7 +566,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Post-Walk Recovery",
-                emoji = "🚶",
+                emoji = "",
                 description = "Insulin sensitivity is elevated after your ${duration}-minute walk. " +
                     "Dose reduced by ${(reductionPercent * 100).toInt()}%.",
                 effect = Effect.DECREASE,
@@ -510,7 +581,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Post-Walk Monitoring",
-                    emoji = "👀",
+                    emoji = "",
                     description = "Monitor glucose closely. Your basal insulin remains active " +
                         "and cannot be adjusted. Consider a small snack if BG trends downward.",
                     effect = Effect.NEUTRAL,
@@ -522,7 +593,7 @@ class ContextualModifierStep : AlgorithmStep {
                     result = result.addEntry(BreakdownEntry(
                         stepName = name,
                         label = "Temp Basal Suggestion",
-                        emoji = "⚙️",
+                        emoji = "",
                         description = "Consider a temporary basal rate of 90% for 1–2 hours " +
                             "post-walk to account for mildly elevated insulin sensitivity.",
                         effect = Effect.NEUTRAL,
@@ -534,7 +605,7 @@ class ContextualModifierStep : AlgorithmStep {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Post-Walk Monitoring",
-                    emoji = "👀",
+                    emoji = "",
                     description = "Monitor glucose. Your pump will adjust insulin delivery " +
                         "automatically. Consider a small carb intake without insulin if BG is borderline.",
                     effect = Effect.NEUTRAL,
@@ -545,7 +616,7 @@ class ContextualModifierStep : AlgorithmStep {
                         .addEntry(BreakdownEntry(
                             stepName = name,
                             label = "Post-Walk Carbohydrates",
-                            emoji = "🍞",
+                            emoji = "",
                             description = "BG is ${context.currentBG.toInt()} mg/dL after walking. " +
                                 "Consider 10g carbohydrates without additional insulin.",
                             effect = Effect.NEUTRAL,
@@ -563,7 +634,7 @@ class ContextualModifierStep : AlgorithmStep {
             return state.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Illness — AID Mode",
-                emoji = "🩺",
+                emoji = "",
                 description = "Illness increases insulin resistance by 20–50% (ISPAD). Your pump " +
                     "will continue auto-dosing, but may need manual support if BG remains elevated " +
                     "after meals. Monitor closely and consider a pen correction if hyperglycemia " +
@@ -576,7 +647,7 @@ class ContextualModifierStep : AlgorithmStep {
             return state.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Illness",
-                emoji = "🩺",
+                emoji = "",
                 description = "No active dose to adjust. If you are ill, monitor BG closely — insulin " +
                     "requirements typically increase 20–50%. Consider logging a BG check every 1–2 hours.",
                 effect = Effect.WARNING,
@@ -588,7 +659,7 @@ class ContextualModifierStep : AlgorithmStep {
         return state.addEntry(BreakdownEntry(
             stepName = name,
             label = "Illness",
-            emoji = "🩺",
+            emoji = "",
             description = "Illness: +25% total dose. Illness increases insulin resistance (ISPAD Sick Day Guidelines).",
             effect = Effect.INCREASE,
             percentChange = 0.25,
@@ -602,7 +673,7 @@ class ContextualModifierStep : AlgorithmStep {
             return state.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Stress — AID Mode",
-                emoji = "😫",
+                emoji = "",
                 description = "Stress can elevate BG via cortisol-driven insulin resistance. Your pump " +
                     "will continue auto-dosing. Monitor closely — if BG remains elevated after meals, " +
                     "stress may require additional attention or a manual correction.",
@@ -614,7 +685,7 @@ class ContextualModifierStep : AlgorithmStep {
             return state.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Stress",
-                emoji = "😫",
+                emoji = "",
                 description = "No active dose to adjust. Stress may elevate BG via cortisol. Monitor closely.",
                 effect = Effect.WARNING,
                 runningTotal = state.currentDose
@@ -625,7 +696,7 @@ class ContextualModifierStep : AlgorithmStep {
         return state.addEntry(BreakdownEntry(
             stepName = name,
             label = "Stress",
-            emoji = "😫",
+            emoji = "",
             description = "Stress: +15% total dose. Stress elevates insulin resistance via cortisol.",
             effect = Effect.INCREASE,
             percentChange = 0.15,
@@ -639,7 +710,7 @@ class ContextualModifierStep : AlgorithmStep {
             return state.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Heat — AID Mode",
-                emoji = "🔥",
+                emoji = "",
                 description = "Elevated temperature accelerates insulin absorption risk. Your pump " +
                     "will continue auto-dosing. Consider reducing your carb entry slightly and " +
                     "watch for unexpected lows after meals.",
@@ -651,7 +722,7 @@ class ContextualModifierStep : AlgorithmStep {
             return state.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Heat",
-                emoji = "🔥",
+                emoji = "",
                 description = "No active dose to adjust. Elevated temperature accelerates insulin absorption — " +
                     "watch for unexpected lows.",
                 effect = Effect.WARNING,
@@ -663,7 +734,7 @@ class ContextualModifierStep : AlgorithmStep {
         return state.addEntry(BreakdownEntry(
             stepName = name,
             label = "Heat",
-            emoji = "🔥",
+            emoji = "",
             description = "Heat: −10% total dose. Elevated temperature accelerates insulin absorption.",
             effect = Effect.DECREASE,
             percentChange = -0.10,
@@ -691,7 +762,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Illness (Non-Dominant)",
-                emoji = "🩺",
+                emoji = "",
                 description = "You are ill. Illness typically increases insulin needs by 20–50%. " +
                     "However, $dominantLabel is currently the primary factor affecting your dose. " +
                     "Monitor BG closely — if glucose remains elevated, illness may require additional correction.",
@@ -704,7 +775,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Stress (Non-Dominant)",
-                emoji = "😫",
+                emoji = "",
                 description = "Stress is active. This typically increases insulin needs. " +
                     "Monitor for unexpected BG elevation.",
                 effect = Effect.WARNING,
@@ -716,7 +787,7 @@ class ContextualModifierStep : AlgorithmStep {
             result = result.addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Heat (Non-Dominant)",
-                emoji = "🔥",
+                emoji = "",
                 description = "Elevated temperature detected. Insulin absorption may be faster than usual. " +
                     "Monitor for unexpected lows.",
                 effect = Effect.WARNING,

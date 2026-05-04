@@ -1,6 +1,8 @@
 package com.example.diabetesapp.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -75,7 +77,9 @@ fun SmartBolusResultDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -202,20 +206,11 @@ private fun AidResultContent(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (enteredCarbs > 0) {
-            val exerciseStep = breakdownSteps.firstOrNull {
-                it.stepName == "Contextual Modifier" &&
-                (it.label.contains("Sport", ignoreCase = true) ||
-                 it.label.contains("Exercise", ignoreCase = true) ||
-                 it.label.contains("Walk", ignoreCase = true) ||
-                 it.label.contains("Recovery", ignoreCase = true))
-            }
-            val reductionPercent = exerciseStep?.percentChange?.let { Math.abs(it) } ?: 0.0
-            val hasExerciseReduction = reductionPercent > 0.0
-            val adjustedCarbs = if (hasExerciseReduction) {
-                (enteredCarbs * (1.0 - reductionPercent)).roundToInt()
-            } else {
-                enteredCarbs.toInt()
-            }
+            val aidCarbStep = breakdownSteps.firstOrNull { it.label == "Meal Carb Adjustment (AID)" }
+            val aidCarbReductionPercent = aidCarbStep?.percentChange?.let { Math.abs(it) } ?: 0.0
+            val hypoReservedCarbs = rescueCarbs
+            val effectiveCarbs = enteredCarbs - hypoReservedCarbs
+            val adjustedCarbs = (effectiveCarbs * (1.0 - aidCarbReductionPercent)).roundToInt()
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -229,26 +224,35 @@ private fun AidResultContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("Enter into pump:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF004D40))
-                    Text(
-                        "${adjustedCarbs}g carbs",
-                        fontSize = 40.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00695C)
-                    )
-                    if (adjustedCarbs < enteredCarbs.toInt()) {
+                    if (adjustedCarbs <= 0) {
                         Text(
-                            "instead of ${enteredCarbs.toInt()}g — reduced for exercise/recovery",
+                            "Do not enter carbs into pump — treat low BG first.",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE53935)
+                        )
+                    } else {
+                        Text("Enter into pump:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF004D40))
+                        Text(
+                            "${adjustedCarbs}g carbs",
+                            fontSize = 40.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00695C)
+                        )
+                        if (aidCarbReductionPercent > 0.0) {
+                            Text(
+                                "instead of ${enteredCarbs.toInt()}g — reduced for exercise",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "Your pump will calculate the appropriate insulin dose.",
                             fontSize = 12.sp,
-                            color = Color.Gray
+                            color = Color(0xFF546E7A)
                         )
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        "Your pump will calculate the appropriate insulin dose.",
-                        fontSize = 12.sp,
-                        color = Color(0xFF546E7A)
-                    )
                 }
             }
 
@@ -385,7 +389,7 @@ private fun AidResultContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("🍬", fontSize = 20.sp)
+                Text("", fontSize = 20.sp)
                 Column {
                     Text(
                         "${rescueCarbs}g fast-acting carbs",

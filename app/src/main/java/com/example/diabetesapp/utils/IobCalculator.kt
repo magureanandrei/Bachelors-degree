@@ -83,9 +83,11 @@ object IobCalculator {
 
         return logs.filter { log ->
             val ageMs = now - log.timestamp
-            val isManual = log.notes != "Auto-entry via CareLink"
-                    && log.notes?.startsWith("Auto-imported") != true
-                    && log.notes?.startsWith("Auto-detected") != true
+            val isManual = log.eventType == "MANUAL_PEN"
+                    || log.eventType == "MANUAL_INSULIN"
+                    || (log.notes != "Auto-entry via CareLink"
+                        && log.notes?.startsWith("Auto-imported") != true
+                        && log.notes?.startsWith("Auto-detected") != true)
             log.administeredDose > 0
                     && ageMs >= 0
                     && ageMs <= durationMs

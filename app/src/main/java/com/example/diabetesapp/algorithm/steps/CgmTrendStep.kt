@@ -184,8 +184,7 @@ class CgmTrendStep : AlgorithmStep {
             description = "Glucose is $directionWord (${trendEmoji(context.cgmTrend)}), " +
                 "anticipating a ${Math.abs(anticipated.toInt())} mg/dL change in 30 minutes. " +
                 "Based on your ISF of ${currentIsf.toInt()} mg/dL/U, dose $actionWord by " +
-                "${String.format("%.1f", absAdjustment)}U " +
-                "(Aleppo et al. 2017).",
+                "${String.format("%.1f", absAdjustment)}U",
             effect = if (adjustment > 0) Effect.INCREASE else Effect.DECREASE,
             valueChange = adjustment,
             runningTotal = newDose

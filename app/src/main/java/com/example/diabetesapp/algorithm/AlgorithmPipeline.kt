@@ -10,8 +10,8 @@ import com.example.diabetesapp.data.models.PatientContext
  */
 class AlgorithmPipeline(private val steps: List<AlgorithmStep>) {
 
-    fun execute(context: PatientContext): ClinicalDecision {
-        val initialState = CalculationState()
+    fun execute(context: PatientContext, initialMetadata: Map<String, Any> = emptyMap()): ClinicalDecision {
+        val initialState = CalculationState(metadata = initialMetadata)
 
         val finalState = steps.fold(initialState) { state, step ->
             step.apply(state, context)
