@@ -206,10 +206,14 @@ private fun AidResultContent(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (enteredCarbs > 0) {
+            val hypoGuardEntry = breakdownSteps.firstOrNull {
+                it.label.contains("Hypo", ignoreCase = true) ||
+                it.label.contains("Low Blood Glucose", ignoreCase = true)
+            }
+            val hypoReservedCarbs = if (hypoGuardEntry != null) rescueCarbs else 0
             val aidCarbStep = breakdownSteps.firstOrNull { it.label == "Meal Carb Adjustment (AID)" }
             val aidCarbReductionPercent = aidCarbStep?.percentChange?.let { Math.abs(it) } ?: 0.0
-            val hypoReservedCarbs = rescueCarbs
-            val effectiveCarbs = enteredCarbs - hypoReservedCarbs
+            val effectiveCarbs = maxOf(0.0, enteredCarbs - hypoReservedCarbs)
             val adjustedCarbs = (effectiveCarbs * (1.0 - aidCarbReductionPercent)).roundToInt()
 
             Card(
@@ -408,8 +412,8 @@ private fun AidResultContent(
 
         if (breakdownSteps.isNotEmpty() || sportLog.isNotBlank()) {
             DoseBreakdownCard(
-                standardDose = standardDose,
-                suggestedDose = calculatedDose,
+                standardDose = 0.0,
+                suggestedDose = 0.0,
                 rationale = sportLog,
                 breakdownSteps = breakdownSteps,
                 isAid = true

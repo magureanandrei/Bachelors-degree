@@ -115,54 +115,114 @@ class ContextualModifierStep : AlgorithmStep {
         val totalMealReduction = minOf(0.90, mealReductionPercent + durationExtra)
         val reducedMeal = mealBolus * (1.0 - totalMealReduction)
 
-        // C. Correction handling by sport type (Zaharieva 2017, Yardley 2013, ISPAD 2022)
+        val exerciseIsImminent = context.minutesUntilSport in -999..30
+
+// C. Correction handling by sport type (Zaharieva 2017, Yardley 2013, ISPAD 2022)
         var reducedCorrection = correctionBolus
         when {
+            // Aerobic/Walking, BG 140–250, exercise imminent or ongoing:
+            // Exercise itself will act as correction — withhold it
             (context.sportType == "Aerobic" || context.sportType == "Walking") &&
-                context.currentBG in 140.0..250.0 -> {
+                    context.currentBG in 140.0..250.0 &&
+                    exerciseIsImminent -> {
                 reducedCorrection = 0.0
                 if (correctionBolus > 0) {
                     result = result.addEntry(BreakdownEntry(
                         stepName = name,
                         label = "Correction Withheld",
                         emoji = "",
-                        description = "Correction withheld. Aerobic exercise will serve as a natural correction.",
+                        description = "Correction withheld. Aerobic exercise starting imminently " +
+                                "will serve as a natural correction mechanism (ISPAD 2022).",
                         effect = Effect.NEUTRAL,
                         runningTotal = result.currentDose
                     ))
                 }
             }
+
+            // Aerobic/Walking, BG 140–250, exercise NOT imminent (>30 min away):
+            // Keep full correction — exercise too far away to rely on as correction
             (context.sportType == "Aerobic" || context.sportType == "Walking") &&
-                context.currentBG > 250.0 -> {
+                    context.currentBG in 140.0..250.0 &&
+                    !exerciseIsImminent -> {
+                // No correction change — full correction maintained
+                if (correctionBolus > 0) {
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Full Correction Maintained",
+                        emoji = "",
+                        description = "Exercise is more than 30 minutes away. Full correction " +
+                                "maintained — insulin will have partially absorbed before activity begins.",
+                        effect = Effect.NEUTRAL,
+                        runningTotal = result.currentDose
+                    ))
+                }
+            }
+
+            // Aerobic/Walking, BG > 250, post-exercise (minutesUntilSport < 0):
+            // ISPAD post-exercise rule — 50% correction cap (line 143, Zaharieva 2015)
+            (context.sportType == "Aerobic" || context.sportType == "Walking") &&
+                    context.currentBG > 250.0 &&
+                    context.minutesUntilSport < 0 -> {
                 reducedCorrection = correctionBolus * 0.50
                 if (correctionBolus > 0) {
                     result = result.addEntry(BreakdownEntry(
                         stepName = name,
-                        label = "Reduced Correction (High BG + Aerobic)",
+                        label = "Reduced Correction (Post-Exercise)",
                         emoji = "",
-                        description = "50% correction applied. BG is very high alongside exercise.",
+                        description = "Post-exercise correction capped at 50% (ISPAD 2022). " +
+                                "Insulin sensitivity is elevated after aerobic exercise — full " +
+                                "correction risks hypoglycemia.",
                         effect = Effect.DECREASE,
                         runningTotal = result.currentDose
                     ))
                 }
             }
+
+            // Aerobic/Walking, BG > 250, pre-exercise (exercise >30 min away or imminent):
+            // Full correction — BG too high to rely on exercise alone, DKA risk
+            (context.sportType == "Aerobic" || context.sportType == "Walking") &&
+                    context.currentBG > 250.0 &&
+                    context.minutesUntilSport >= 0 -> {
+                // Full correction maintained
+                if (correctionBolus > 0) {
+                    result = result.addEntry(BreakdownEntry(
+                        stepName = name,
+                        label = "Full Correction (High BG Pre-Exercise)",
+                        emoji = "",
+                        description = "BG is above 250 mg/dL before exercise. Full correction " +
+                                "maintained — consider delaying exercise until BG is below 250 mg/dL. " +
+                                "Exercise with very high BG risks DKA (ISPAD 2022).",
+                        effect = Effect.WARNING,
+                        runningTotal = result.currentDose
+                    ))
+                }
+            }
+
+            // Mixed exercise: 50% correction regardless of timing
+            // Variable BG effects make full correction risky (Zaharieva 2017)
             context.sportType == "Mixed" && correctionBolus > 0 -> {
                 reducedCorrection = correctionBolus * 0.50
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Reduced Correction (Mixed Exercise)",
                     emoji = "",
-                    description = "50% correction. Mixed exercise has variable BG effects.",
+                    description = "50% correction applied. Mixed exercise has variable glycemic " +
+                            "effects — conservative correction recommended (Zaharieva 2017).",
                     effect = Effect.DECREASE,
                     runningTotal = result.currentDose
                 ))
             }
+
+            // Anaerobic: full correction — anaerobic doesn't reliably lower BG
+            // and may temporarily raise it (Yardley 2013)
             context.sportType == "Anaerobic" && correctionBolus > 0 -> {
                 result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Full Correction (Anaerobic)",
                     emoji = "",
-                    description = "Full correction maintained. Anaerobic exercise does not reliably lower BG.",
+                    description = "Full correction maintained. Anaerobic exercise does not " +
+                            "reliably lower BG and may temporarily raise it due to catecholamine " +
+                            "release (Yardley 2013).",
                     effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
                 ))
@@ -206,12 +266,13 @@ class ContextualModifierStep : AlgorithmStep {
         }
 
         // E. Therapy-specific advice
+        val hypoReservedCarbs = (state.metadata["hypoReservedCarbs"] as? Int) ?: 0
         when (context.therapyType) {
             TherapyType.MDI -> {
                 val carbs = when (context.sportType) {
                     "Aerobic" -> 20; "Walking" -> 15; "Mixed" -> 15; else -> 10
                 }
-                result = result.addEntry(BreakdownEntry(
+                if (hypoReservedCarbs == 0) result = result.addEntry(BreakdownEntry(
                     stepName = name,
                     label = "Pre-Exercise Carbohydrates (MDI)",
                     emoji = "",
@@ -280,7 +341,7 @@ class ContextualModifierStep : AlgorithmStep {
                     effect = Effect.NEUTRAL,
                     runningTotal = result.currentDose
                 ))
-                if (context.currentBG > 0 && context.currentBG < 100) {
+                if (context.currentBG > 0 && context.currentBG < 100 && hypoReservedCarbs == 0) {
                     result = result.copy(rescueCarbs = maxOf(result.rescueCarbs, 10))
                         .addEntry(BreakdownEntry(
                             stepName = name,
@@ -295,9 +356,8 @@ class ContextualModifierStep : AlgorithmStep {
 
                 // AID meal carb reduction per Moser et al. 2025 EASD/ISPAD position statement.
                 // Only applies when exercise is within 2 hours of the meal.
+                // Sport-based percentage is computed independently of BG guards.
                 val aidCarbReductionPercent = when {
-                    context.currentBG < context.bolusSettings.hypoLimit.toDouble() -> 0.0
-                    context.currentBG > context.bolusSettings.hyperLimit.toDouble() -> 0.0
                     context.sportType == "Anaerobic" -> 0.0
                     context.minutesUntilSport > 120 -> 0.0
                     context.sportType in listOf("Aerobic", "Mixed", "Walking", "Running", "Cycling", "Swimming") ->
@@ -308,59 +368,63 @@ class ContextualModifierStep : AlgorithmStep {
                         }
                     else -> 0.0
                 }
-                result = result.withMeta("aidCarbReductionPercent", aidCarbReductionPercent)
-
-                if (context.plannedCarbs > 0.0 && aidCarbReductionPercent > 0.0) {
-                    val originalCarbs = context.plannedCarbs.toInt()
-                    val reducedCarbs = (context.plannedCarbs * (1.0 - aidCarbReductionPercent)).roundToInt()
-                    val pct = (aidCarbReductionPercent * 100).toInt()
-                    result = result.addEntry(BreakdownEntry(
-                        stepName = name,
-                        label = "Meal Carb Adjustment (AID)",
-                        emoji = "",
-                        description = "Exercise within 2 hours of meal. Enter ${reducedCarbs}g into pump " +
-                            "instead of ${originalCarbs}g (−${pct}% per Moser et al. 2025 EASD/ISPAD " +
-                            "guidelines). Your pump will calculate the appropriate insulin dose from the " +
-                            "adjusted carb entry.",
-                        effect = Effect.DECREASE,
-                        percentChange = -aidCarbReductionPercent,
-                        runningTotal = result.currentDose
-                    ))
-                } else if (context.plannedCarbs > 0.0
-                    && context.currentBG > context.bolusSettings.hyperLimit.toDouble()
-                    && result.rescueCarbs == 0
-                ) {
-                    result = result.addEntry(BreakdownEntry(
-                        stepName = name,
-                        label = "Carb Reduction Withheld (High BG)",
-                        emoji = "",
-                        description = "BG is ${context.currentBG.toInt()} mg/dL — above your high limit. " +
-                            "Full carb entry recommended. Your pump's SmartGuard will manage the correction. " +
-                            "Do not under-report carbs when BG is elevated, as this may cause the pump to " +
-                            "under-dose your meal.",
-                        effect = Effect.NEUTRAL,
-                        runningTotal = result.currentDose
-                    ))
-                } else if (context.plannedCarbs > 0.0
-                    && context.minutesUntilSport <= 120
-                    && result.rescueCarbs == 0
+                val aidCarbReductionActive = context.currentBG >= context.bolusSettings.hypoLimit.toDouble()
                     && context.currentBG <= context.bolusSettings.hyperLimit.toDouble()
-                    && context.currentBG >= context.bolusSettings.hypoLimit.toDouble()
-                ) {
-                    val reason = when {
-                        context.sportType == "Anaerobic" ->
-                            "Anaerobic exercise: no carb reduction applied. " +
-                            "Your pump handles the glycemia response."
-                        else -> "No carb reduction applicable for current sport context."
+                result = result.withMeta("aidCarbReductionPercent", aidCarbReductionPercent)
+                result = result.withMeta("aidCarbReductionActive", aidCarbReductionActive)
+
+                if (context.plannedCarbs > 0.0) {
+                    when {
+                        !aidCarbReductionActive && context.currentBG < context.bolusSettings.hypoLimit.toDouble() -> {
+                            // Skip — hypo guard already explains carb handling
+                        }
+                        !aidCarbReductionActive && result.rescueCarbs == 0 -> {
+                            result = result.addEntry(BreakdownEntry(
+                                stepName = name,
+                                label = "Carb Reduction Withheld (High BG)",
+                                emoji = "",
+                                description = "BG is ${context.currentBG.toInt()} mg/dL — above your high limit. " +
+                                    "Full carb entry recommended. Your pump's SmartGuard will manage the correction. " +
+                                    "Do not under-report carbs when BG is elevated, as this may cause the pump to " +
+                                    "under-dose your meal.",
+                                effect = Effect.NEUTRAL,
+                                runningTotal = result.currentDose
+                            ))
+                        }
+                        aidCarbReductionActive && aidCarbReductionPercent > 0.0 -> {
+                            val originalCarbs = context.plannedCarbs.toInt()
+                            val reducedCarbs = (context.plannedCarbs * (1.0 - aidCarbReductionPercent)).roundToInt()
+                            val pct = (aidCarbReductionPercent * 100).toInt()
+                            result = result.addEntry(BreakdownEntry(
+                                stepName = name,
+                                label = "Meal Carb Adjustment (AID)",
+                                emoji = "",
+                                description = "Exercise within 2 hours of meal. Enter ${reducedCarbs}g into pump " +
+                                    "instead of ${originalCarbs}g (−${pct}% per Moser et al. 2025 EASD/ISPAD " +
+                                    "guidelines). Your pump will calculate the appropriate insulin dose from the " +
+                                    "adjusted carb entry.",
+                                effect = Effect.DECREASE,
+                                percentChange = -aidCarbReductionPercent,
+                                runningTotal = result.currentDose
+                            ))
+                        }
+                        aidCarbReductionActive && context.minutesUntilSport <= 120 && result.rescueCarbs == 0 -> {
+                            val reason = when {
+                                context.sportType == "Anaerobic" ->
+                                    "Anaerobic exercise: no carb reduction applied. " +
+                                    "Your pump handles the glycemia response."
+                                else -> "No carb reduction applicable for current sport context."
+                            }
+                            result = result.addEntry(BreakdownEntry(
+                                stepName = name,
+                                label = "Meal Carb Adjustment (AID)",
+                                emoji = "",
+                                description = reason,
+                                effect = Effect.NEUTRAL,
+                                runningTotal = result.currentDose
+                            ))
+                        }
                     }
-                    result = result.addEntry(BreakdownEntry(
-                        stepName = name,
-                        label = "Meal Carb Adjustment (AID)",
-                        emoji = "",
-                        description = reason,
-                        effect = Effect.NEUTRAL,
-                        runningTotal = result.currentDose
-                    ))
                 }
             }
         }
