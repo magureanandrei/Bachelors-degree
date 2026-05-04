@@ -71,7 +71,7 @@ fun DoseBreakdownCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Standard Math:", fontSize = 13.sp, color = Color.Gray)
-                        Text("${standardDose}U", fontSize = 13.sp, color = Color.Gray, textDecoration = TextDecoration.LineThrough)
+                        Text("${String.format("%.1f", standardDose)}U", fontSize = 13.sp, color = Color.Gray, textDecoration = TextDecoration.LineThrough)
                     }
                 }
                 Row(

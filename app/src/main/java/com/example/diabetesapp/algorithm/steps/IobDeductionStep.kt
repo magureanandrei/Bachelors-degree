@@ -12,17 +12,34 @@ class IobDeductionStep : AlgorithmStep {
     override val name = "IOB Deduction"
 
     override fun apply(state: CalculationState, context: PatientContext): CalculationState {
-        if (context.activeInsulinIOB <= 0 || state.currentDose <= 0) return state
+        if (context.activeInsulinIOB <= 0) return state
 
-        val deduction = minOf(context.activeInsulinIOB, state.currentDose)
-        val newDose = maxOf(0.0, state.currentDose - context.activeInsulinIOB)
+        val mealBolus = (state.metadata["mealBolus"] as? Double) ?: 0.0
+        val correctionBolus = (state.metadata["correctionBolus"] as? Double) ?: 0.0
+
+        val adjustedCorrection = maxOf(0.0, correctionBolus - context.activeInsulinIOB)
+        val deduction = correctionBolus - adjustedCorrection
+        val newDose = mealBolus + adjustedCorrection
+
+        if (deduction == 0.0) return state
+
+        val iobStr = String.format("%.1f", context.activeInsulinIOB)
+        val corrStr = String.format("%.1f", correctionBolus)
+        val adjCorrStr = String.format("%.1f", adjustedCorrection)
+        val mealStr = String.format("%.1f", mealBolus)
+
+        val description = if (adjustedCorrection == 0.0) {
+            "IOB of ${iobStr}U fully covers the correction component (${corrStr}U). Meal bolus of ${mealStr}U unchanged."
+        } else {
+            "IOB of ${iobStr}U partially offsets correction. Correction reduced from ${corrStr}U to ${adjCorrStr}U. Meal bolus of ${mealStr}U unchanged."
+        }
 
         var result = state
             .addEntry(BreakdownEntry(
                 stepName = name,
                 label = "Active Insulin (IOB)",
                 emoji = "💉",
-                description = "Active IOB: -${String.format("%.1f", deduction)}U deducted.",
+                description = description,
                 effect = Effect.DECREASE,
                 valueChange = -deduction,
                 runningTotal = newDose

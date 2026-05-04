@@ -323,6 +323,20 @@ class CalculateBolusViewModel(
             val state = _inputState.value
             val currentSettings = settings.value
 
+            val logs = withContext(Dispatchers.IO) { repository.getAllLogsImmediate() }
+            val latestReading = if (currentSettings.isCgmEnabled) {
+                withContext(Dispatchers.IO) {
+                    try { getLatestBgFromXDrip() } catch (e: Exception) { null }
+                }
+            } else null
+            val iobResult = IobCalculator.calculate(
+                logs = logs,
+                settings = currentSettings,
+                xdripIob = latestReading?.iob,
+                xdripTimestamp = latestReading?.timestamp
+            )
+            val activeIob = iobResult.totalIob
+
             val cgmTrend = if (currentSettings.isCgmEnabled)
                 CgmTrend.fromString(state.cgmTrendString)
             else
@@ -334,7 +348,7 @@ class CalculateBolusViewModel(
                 currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
                 hasCGM = currentSettings.isCgmEnabled,
                 cgmTrend = cgmTrend,
-                activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
+                activeInsulinIOB = activeIob,
                 plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
                 isDoingSport = state.isSportModeActive,
                 sportType = state.sportType,
@@ -372,6 +386,7 @@ class CalculateBolusViewModel(
                     maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf())
             }
             _inputState.value = _inputState.value.copy(
+                activeInsulin = if (activeIob > 0.01) String.format("%.1f", activeIob) else "",
                 standardDose = standardDose,
                 calculatedDose = decision.suggestedInsulinDose,
                 userAdjustedDose = decision.suggestedInsulinDose,
