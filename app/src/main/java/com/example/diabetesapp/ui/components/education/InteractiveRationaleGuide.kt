@@ -61,7 +61,7 @@ private val sampleEntries = listOf(
     BreakdownEntry(
         stepName = "Baseline",
         label = SAMPLE_ENTRY_MEAL_LABEL,
-        emoji = "🍽️",
+        emoji = "",
         description = SAMPLE_ENTRY_MEAL_DESC,
         effect = Effect.INCREASE,
         valueChange = 3.0,
@@ -71,7 +71,7 @@ private val sampleEntries = listOf(
     BreakdownEntry(
         stepName = "Correction",
         label = SAMPLE_ENTRY_CORRECTION_LABEL,
-        emoji = "💉",
+        emoji = "",
         description = SAMPLE_ENTRY_CORRECTION_DESC,
         effect = Effect.INCREASE,
         valueChange = 1.6,
@@ -81,7 +81,7 @@ private val sampleEntries = listOf(
     BreakdownEntry(
         stepName = "Sport",
         label = SAMPLE_ENTRY_SPORT_LABEL,
-        emoji = "🏃",
+        emoji = "",
         description = SAMPLE_ENTRY_SPORT_DESC,
         effect = Effect.DECREASE,
         valueChange = -1.5,
@@ -91,7 +91,7 @@ private val sampleEntries = listOf(
     BreakdownEntry(
         stepName = "IOB",
         label = SAMPLE_ENTRY_IOB_LABEL,
-        emoji = "⬇️",
+        emoji = "",
         description = SAMPLE_ENTRY_IOB_DESC,
         effect = Effect.DECREASE,
         valueChange = -1.5,
@@ -101,7 +101,7 @@ private val sampleEntries = listOf(
     BreakdownEntry(
         stepName = "Basal",
         label = SAMPLE_ENTRY_BASAL_LABEL,
-        emoji = "⚠️",
+        emoji = "",
         description = SAMPLE_ENTRY_BASAL_DESC,
         effect = Effect.WARNING,
         valueChange = null,

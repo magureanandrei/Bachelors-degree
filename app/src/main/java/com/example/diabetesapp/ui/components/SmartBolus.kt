@@ -349,7 +349,7 @@ fun SmartBolus(
                         Text("Continuous cardio (running, cycling, swimming). Rapidly burns glucose. Requires the largest reduction in insulin to prevent severe lows.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                     Column {
-                        Text("⚽ Mixed", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
+                        Text("Mixed", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                         Text("Stop-and-go sports (soccer, basketball, tennis). A mix of cardio and adrenaline. Requires a moderate, balanced insulin approach.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                     Column {

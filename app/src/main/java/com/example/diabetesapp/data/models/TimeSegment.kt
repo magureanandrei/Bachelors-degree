@@ -9,10 +9,10 @@ enum class TimeSegment(
     val startHour: Int,
     val endHour: Int
 ) {
-    MORNING("Morning", "🌅", "06-11", 6, 11),
-    NOON("Noon", "☀️", "11-16", 11, 16),
-    EVENING("Evening", "🌇", "16-23", 16, 23),
-    NIGHT("Night", "🌙", "23-06", 23, 6);
+    MORNING("Morning", "", "06-11", 6, 11),
+    NOON("Noon", "", "11-16", 11, 16),
+    EVENING("Evening", "", "16-23", 16, 23),
+    NIGHT("Night", "", "23-06", 23, 6);
 
     companion object {
         /**

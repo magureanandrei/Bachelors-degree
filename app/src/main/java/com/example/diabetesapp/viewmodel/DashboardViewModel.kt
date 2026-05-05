@@ -2,6 +2,7 @@ package com.example.diabetesapp.viewmodel
 
 import android.content.Context
 import android.util.Log
+import com.example.diabetesapp.utils.WorkoutNotificationManager
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.lifecycle.ViewModel
@@ -40,7 +41,8 @@ import java.time.LocalTime
 class DashboardViewModel(
     private val repository: BolusLogRepository,
     private val settingsRepository: BolusSettingsRepository,
-    private val healthConnectHelper: HealthConnectHelper? = null
+    private val healthConnectHelper: HealthConnectHelper? = null,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     val allLogs: StateFlow<List<BolusLog>> = repository.allLogs.stateIn(
@@ -172,6 +174,12 @@ class DashboardViewModel(
                     settings.value.isAidPump && settings.value.isCgmEnabled -> fetchAidCgmMode()
                     settings.value.isCgmEnabled -> fetchCgmOnlyMode()
                     else -> fetchManualMode()
+                }
+                if (!settings.value.isCgmEnabled) {
+                    appContext?.let { ctx ->
+                        val lastBg = repository.getLatestManualBgLog()
+                        WorkoutNotificationManager.scheduleStaleBgReminder(ctx, lastBg?.timestamp ?: 0L)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("DashboardVM", "Fetch failed", e)
@@ -323,6 +331,10 @@ class DashboardViewModel(
         viewModelScope.launch {
             repository.update(updatedLog)
             unverifiedWorkout.value = null
+            appContext?.let { ctx ->
+                val sportEndTime = updatedLog.timestamp + (actualDuration.toLong() * 60_000L)
+                WorkoutNotificationManager.schedulePostSportTwoHour(ctx, sportEndTime)
+            }
         }
     }
 }
@@ -343,7 +355,7 @@ class DashboardViewModelFactory(
                 }
             }
             @Suppress("UNCHECKED_CAST")
-            return DashboardViewModel(repository, settingsRepository, healthConnectHelper) as T
+            return DashboardViewModel(repository, settingsRepository, healthConnectHelper, context?.applicationContext) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

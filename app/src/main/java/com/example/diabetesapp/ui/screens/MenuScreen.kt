@@ -184,7 +184,9 @@ fun MenuScreen(
                         }
                         Canvas(modifier = Modifier.size(14.dp)) {
                             drawCircle(
-                                color = if (activityStatus is ActivityStatus.Connected) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                color = if (activityStatus is ActivityStatus.Connected) Color(
+                                    0xFF4CAF50
+                                ) else Color(0xFFF44336)
                             )
                         }
                     }

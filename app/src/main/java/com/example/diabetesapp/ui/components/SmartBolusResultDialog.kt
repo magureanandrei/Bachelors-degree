@@ -279,7 +279,7 @@ private fun AidResultContent(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("⚠️ Illness Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
+                        Text("Illness Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
                         Text(
                             "Illness increases insulin resistance by 20–50% (ISPAD). Your pump's normal dosing may be insufficient. Enter your actual carbs — monitor BG closely after the meal. If BG remains elevated after 2–3 hours, consider a manual pen correction.",
                             fontSize = 12.sp, color = Color(0xFF546E7A), lineHeight = 16.sp
@@ -300,7 +300,7 @@ private fun AidResultContent(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("⚠️ Stress Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
+                        Text("Stress Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
                         Text(
                             "Stress increases insulin resistance. Monitor BG after this meal — you may need additional correction.",
                             fontSize = 12.sp, color = Color(0xFF546E7A), lineHeight = 16.sp
@@ -321,7 +321,7 @@ private fun AidResultContent(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("⚠️ Heat Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
+                        Text("Heat Active", fontWeight = FontWeight.Bold, color = Color(0xFFE65100), fontSize = 14.sp)
                         Text(
                             "High temperature accelerates insulin absorption. Your pump's dose may act faster than expected. Watch for unexpected lows after this meal.",
                             fontSize = 12.sp, color = Color(0xFF546E7A), lineHeight = 16.sp

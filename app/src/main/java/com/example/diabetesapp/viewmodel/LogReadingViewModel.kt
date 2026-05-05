@@ -1,5 +1,6 @@
 package com.example.diabetesapp.viewmodel
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -13,6 +14,7 @@ import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
+import com.example.diabetesapp.utils.WorkoutNotificationManager
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +55,8 @@ data class LogReadingState(
 
 class LogReadingViewModel(
     private val repository: BolusLogRepository,
-    private val settingsRepository: BolusSettingsRepository
+    private val settingsRepository: BolusSettingsRepository,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LogReadingState())
@@ -315,6 +318,16 @@ class LogReadingViewModel(
                         clinicalSuggestion = state.pendingClinicalSuggestion
                     )
                 )
+                appContext?.let { ctx ->
+                    val sportEndTime = timestamp + (state.sportDurationMinutes.toLong() * 60_000L)
+                    WorkoutNotificationManager.schedulePostSportTwoHour(ctx, sportEndTime)
+                    val lastBg = withContext(Dispatchers.IO) { repository.getLatestManualBgLog() }
+                    WorkoutNotificationManager.schedulePostSportEvening(
+                        ctx,
+                        lastBg?.bloodGlucose ?: 0.0,
+                        settings.value.hyperLimit
+                    )
+                }
             } else {
                 val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
                 val carbs = state.carbs.toDoubleOrNull() ?: 0.0
@@ -341,7 +354,16 @@ class LogReadingViewModel(
                     )
                 )
 
-                // After the existing non-sport repository.insert() call:
+                appContext?.let { ctx ->
+                    if (eventType == "MANUAL_PEN" && settings.value.isAidPump) {
+                        WorkoutNotificationManager.schedulePenCorrectionCheck(ctx)
+                    }
+                    if (bg > 0 && !settings.value.isCgmEnabled) {
+                        WorkoutNotificationManager.cancelStaleBgReminder(ctx)
+                        WorkoutNotificationManager.scheduleStaleBgReminder(ctx, timestamp)
+                    }
+                }
+
                 val basalDose = state.basalInsulin.toDoubleOrNull() ?: 0.0
                 if (basalDose > 0) {
                     repository.insert(
@@ -362,6 +384,9 @@ class LogReadingViewModel(
                             clinicalSuggestion = null
                         )
                     )
+                    appContext?.let { ctx ->
+                        WorkoutNotificationManager.cancelMissedBasalReminder(ctx)
+                    }
                 }
             }
 
@@ -373,12 +398,13 @@ class LogReadingViewModel(
 
 class LogReadingViewModelFactory(
     private val repository: BolusLogRepository,
-    private val settingsRepository: BolusSettingsRepository
+    private val settingsRepository: BolusSettingsRepository,
+    private val context: Context? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LogReadingViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return LogReadingViewModel(repository, settingsRepository) as T
+            return LogReadingViewModel(repository, settingsRepository, context?.applicationContext) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

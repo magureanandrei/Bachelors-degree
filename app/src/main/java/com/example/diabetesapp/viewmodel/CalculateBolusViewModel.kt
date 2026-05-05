@@ -262,7 +262,7 @@ class CalculateBolusViewModel(
                         _inputState.update { it.copy(
                             bloodGlucose = "", // Clear it so they don't use old data
                             cgmTrendString = "",
-                            warningMessage = "⚠️ No recent reading found (last 20m). Please check sensor or fingerstick."
+                            warningMessage = "No recent reading found (last 20m). Please check sensor or fingerstick."
                         )}
                     }
                 }
@@ -469,6 +469,12 @@ class CalculateBolusViewModel(
                 val notificationTime = sportStartTimestamp + (state.sportDurationMinutes.toLong() * 60 * 1000L)
                 WorkoutNotificationManager.scheduleNotification(context, notificationTime)
 
+                // Pre-sport reminders
+                WorkoutNotificationManager.schedulePreSport30min(context, sportStartTimestamp)
+                if (!currentSettings.isCgmEnabled) {
+                    WorkoutNotificationManager.schedulePreSportBgCheck(context, sportStartTimestamp)
+                }
+
             } else {
                 // Normal immediate log
                 val log = if (currentSettings.isAidPump) {
@@ -513,6 +519,16 @@ class CalculateBolusViewModel(
                     )
                 }
                 repository.insert(log)
+
+                // Post-meal check (no CGM only)
+                if (!currentSettings.isCgmEnabled) {
+                    WorkoutNotificationManager.schedulePostMealCheck(context)
+                }
+                // Reschedule stale BG reminder when a BG reading is included
+                if (bg > 0 && !currentSettings.isCgmEnabled) {
+                    WorkoutNotificationManager.cancelStaleBgReminder(context)
+                    WorkoutNotificationManager.scheduleStaleBgReminder(context, now)
+                }
             }
             resetForm()
         }

@@ -1,20 +1,46 @@
 package com.example.diabetesapp
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.example.diabetesapp.data.database.BolusDatabase
+import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.ui.components.BottomNavBar
 import com.example.diabetesapp.ui.screens.*
 import com.example.diabetesapp.ui.theme.DiabetesAppTheme
+import com.example.diabetesapp.utils.WorkoutNotificationManager
+import kotlinx.coroutines.flow.first
+import java.util.Calendar
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,17 +58,61 @@ class MainActivity : ComponentActivity() {
 fun MainScreen() {
     val context = LocalContext.current
     val repository = remember { BolusSettingsRepository.getInstance(context) }
-    
+
     // Note: change true/false here to forcefully test onboarding, but otherwise it should read from repository
     var onboardingComplete by remember { mutableStateOf(repository.hasCompletedOnboarding()) }
 
-    // Declare ALL remembers at the top structure level before conditionals! 
+    val prefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+    var showNotifModal by remember { mutableStateOf(false) }
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    // Declare ALL remembers at the top structure level before conditionals!
     // This stops them from "disappearing/reappearing" during recomposition, which causes the crash.
     var backStack by remember { mutableStateOf(listOf("home")) }
     var selectedRoute by remember { mutableStateOf("home") }
-    
+
     // Computed value based on state
     val currentScreen = backStack.last()
+
+    LaunchedEffect(Unit) {
+        val settings = repository.settings.first()
+        WorkoutNotificationManager.scheduleMorningReminder(context)
+        if (settings.isMdi) {
+            val midnight = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val db = BolusDatabase.getDatabase(context)
+            val logRepo = BolusLogRepository(db.bolusLogDao())
+            val basalLogs = logRepo.getBasalLogsSince(midnight)
+            if (basalLogs.isEmpty()) {
+                WorkoutNotificationManager.scheduleMissedBasalReminder(context)
+            } else {
+                WorkoutNotificationManager.cancelMissedBasalReminder(context)
+            }
+        }
+        if (!settings.isCgmEnabled) {
+            val db = BolusDatabase.getDatabase(context)
+            val logRepo = BolusLogRepository(db.bolusLogDao())
+            val lastBg = logRepo.getLatestManualBgLog()
+            WorkoutNotificationManager.scheduleStaleBgReminder(context, lastBg?.timestamp ?: 0L)
+        }
+    }
+
+    LaunchedEffect(onboardingComplete) {
+        if (onboardingComplete && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val alreadyAsked = prefs.getBoolean("notif_permission_asked", false)
+            val alreadyGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!alreadyAsked && !alreadyGranted) {
+                showNotifModal = true
+            }
+        }
+    }
 
     if (!onboardingComplete) {
         OnboardingScreen(onComplete = { onboardingComplete = true })
@@ -127,5 +197,70 @@ fun MainScreen() {
                 )
             }
         }
+    }
+
+    if (showNotifModal) {
+        AlertDialog(
+            onDismissRequest = {
+                showNotifModal = false
+                prefs.edit().putBoolean("notif_permission_asked", true).apply()
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Notifications,
+                    contentDescription = null,
+                    tint = Color(0xFF00897B),
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    "Enable Notifications",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color.Black
+                )
+            },
+            text = {
+                Text(
+                    "This app sends reminders for missed basal doses, post-exercise " +
+                    "hypoglycemia risk, meal checks, and more. Notifications help keep " +
+                    "you safe — we recommend enabling them.",
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    color = Color(0xFF37474F)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showNotifModal = false
+                        prefs.edit().putBoolean("notif_permission_asked", true).apply()
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            requestPermissionLauncher.launch(
+                                Manifest.permission.POST_NOTIFICATIONS
+                            )
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF00897B)
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Enable", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showNotifModal = false
+                        prefs.edit().putBoolean("notif_permission_asked", true).apply()
+                    }
+                ) {
+                    Text("Not Now", color = Color.Gray)
+                }
+            },
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
