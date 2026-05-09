@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -73,7 +74,7 @@ fun StepsModal(
                     )
                 } else {
                     StepsBarChart(
-                        days = last30Days,
+                        days = last30Days.takeLast(5),
                         yesterdayEpochDay = yesterday.dateEpochDay
                     )
                 }
@@ -108,10 +109,10 @@ private fun StepsBarChart(days: List<DailyMetrics>, yesterdayEpochDay: Long) {
             val left = i * (barWidth + gap)
             val barH = chartH * (dm.steps.toFloat() / maxSteps).coerceIn(0f, 1f)
             val top = topPad + chartH - barH
-            val isYesterday = dm.dateEpochDay == yesterdayEpochDay
+            val isLatest = i == days.size - 1
 
             drawRoundRect(
-                color = if (isYesterday) STEPS_YESTERDAY_COLOR else STEPS_BAR_COLOR,
+                color = if (isLatest) Color(0xFF00695C) else STEPS_BAR_COLOR,
                 topLeft = Offset(left, top),
                 size = Size(barWidth, barH),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f)
@@ -129,5 +130,19 @@ private fun StepsBarChart(days: List<DailyMetrics>, yesterdayEpochDay: Long) {
                 )
             }
         }
+
+        // Average line
+        val avg = days.map { it.steps }.average().toFloat()
+        val avgBarH = chartH * (avg / maxSteps).coerceIn(0f, 1f)
+        val avgY = topPad + chartH - avgBarH
+        drawLine(
+            color = Color(0xFF00897B).copy(alpha = 0.6f),
+            start = Offset(0f, avgY),
+            end = Offset(size.width, avgY),
+            strokeWidth = 1.5.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 4f))
+        )
+        val avgLabel = textMeasurer.measure("avg", style = TextStyle(fontSize = 8.sp, color = Color.Gray))
+        drawText(avgLabel, topLeft = Offset(8f, avgY - avgLabel.size.height - 2f))
     }
 }

@@ -65,7 +65,7 @@ fun CvModal(
                 Spacer(Modifier.height(16.dp))
 
                 val validDays = last30Days.filter { it.readingCount >= 3 }
-                if (validDays.size < 7) {
+                if (validDays.size < 2) {
                     Text(
                         "Not enough data yet for trend view",
                         fontSize = 13.sp,
@@ -104,7 +104,7 @@ private fun CvLineChart(days: List<DailyMetrics>) {
         fun idxToX(i: Int) = leftPad + (i.toFloat() / (days.size - 1).coerceAtLeast(1)) * chartW
 
         // Y-axis labels
-        listOf(0f, 36f, 80f).forEach { v ->
+        listOf(0f, 36f, 72f).forEach { v ->
             val y = cvToY(v)
             val label = "${v.toInt()}%"
             val m = textMeasurer.measure(label, style = TextStyle(fontSize = 8.sp, color = Color.Gray))
@@ -121,10 +121,33 @@ private fun CvLineChart(days: List<DailyMetrics>) {
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
         )
         val threshLabel = textMeasurer.measure(
-            "Stability threshold",
+            "Target",
             style = TextStyle(fontSize = 8.sp, color = THRESHOLD_COLOR)
         )
-        drawText(threshLabel, topLeft = Offset(leftPad + 4f, threshY - threshLabel.size.height - 2f))
+        drawText(threshLabel, topLeft = Offset(size.width - threshLabel.size.width - 4f, threshY - threshLabel.size.height - 2f))
+
+        // Area fill under CV line
+        val bottomY = topPad + chartH
+        days.forEachIndexed { i, dm ->
+            if (i == 0) return@forEachIndexed
+            val prev = days[i - 1]
+            val x0 = idxToX(i - 1)
+            val y0 = cvToY(prev.cv)
+            val x1 = idxToX(i)
+            val y1 = cvToY(dm.cv)
+            val avgCv = (prev.cv + dm.cv) / 2f
+            val fillColor = if (avgCv <= CV_THRESHOLD)
+                CV_STABLE_COLOR.copy(alpha = 0.08f)
+            else
+                CV_UNSTABLE_COLOR.copy(alpha = 0.08f)
+            val path = Path()
+            path.moveTo(x0, y0)
+            path.lineTo(x1, y1)
+            path.lineTo(x1, bottomY)
+            path.lineTo(x0, bottomY)
+            path.close()
+            drawPath(path, color = fillColor)
+        }
 
         // Colored line segments
         days.forEachIndexed { i, dm ->

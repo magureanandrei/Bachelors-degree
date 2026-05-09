@@ -15,5 +15,6 @@ data class DailyMetrics(
     val insulinUnits: Float,
     val carbs: Float,
     val readingCount: Int,
-    val isCgmData: Boolean
+    val isCgmData: Boolean,
+    val avgBg: Float = 0f
 )

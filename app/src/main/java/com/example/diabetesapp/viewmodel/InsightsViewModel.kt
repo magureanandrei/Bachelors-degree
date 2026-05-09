@@ -66,16 +66,29 @@ class InsightsViewModel(
                 emptyList()
             }
 
+            val todayDbLogs = withContext(Dispatchers.IO) {
+                insightsRepo.getLogsForDay(dayStart, dayEnd)
+            }
+
+            val todaySteps = try {
+                withContext(Dispatchers.IO) { insightsRepo.getTodaySteps() }
+            } catch (e: Exception) { 0L }
+
             val liveMetrics = if (bgReadings.isNotEmpty()) {
                 MetricsCalculator.computeDayMetrics(
                     dateEpochDay = today.toEpochDay(),
                     bgReadings = bgReadings,
-                    insulinLogs = emptyList(),
+                    insulinLogs = todayDbLogs,
                     hypoLimit = settings.hypoLimit,
                     hyperLimit = settings.hyperLimit,
+                    steps = todaySteps,
                     isCgmData = true
                 )
             } else null
+
+            if (liveMetrics != null) {
+                insightsRepo.saveMetrics(liveMetrics)
+            }
 
             // 7 and 30 day from DB (best effort)
             val last7 = try {

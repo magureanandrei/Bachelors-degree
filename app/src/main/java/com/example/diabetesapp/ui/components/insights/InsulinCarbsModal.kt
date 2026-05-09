@@ -1,6 +1,7 @@
 package com.example.diabetesapp.ui.components.insights
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,9 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -53,29 +57,38 @@ fun InsulinCarbsModal(
                 )
                 Spacer(Modifier.height(12.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Insulin", fontSize = 11.sp, color = Color.Gray)
                         Text(
                             "${yesterday.insulinUnits.toInt()}U",
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 32.sp,
                             color = INSULIN_COLOR
                         )
-                        Text("insulin yesterday", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Column {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(40.dp)
+                            .background(Color(0xFFE0E0E0))
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Carbs", fontSize = 11.sp, color = Color.Gray)
                         Text(
                             "${yesterday.carbs.toInt()}g",
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 32.sp,
                             color = CARBS_COLOR
                         )
-                        Text("carbs yesterday", fontSize = 11.sp, color = Color.Gray)
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
-                InsulinCarbsBarChart(last30Days)
+                InsulinCarbsBarChart(last30Days.takeLast(5))
 
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -98,10 +111,13 @@ private fun InsulinCarbsBarChart(days: List<DailyMetrics>) {
     val textMeasurer = rememberTextMeasurer()
     val dateFormatter = DateTimeFormatter.ofPattern("M/d")
 
-    Canvas(modifier = Modifier.fillMaxWidth().height(160.dp)) {
+    Canvas(modifier = Modifier
+        .fillMaxWidth()
+        .height(180.dp)  // extra height for labels above bars
+    ) {
         if (days.isEmpty()) return@Canvas
 
-        val topPad = 8f
+        val topPad = 20f   // space for labels above bars
         val bottomPad = 20f
         val chartH = size.height - topPad - bottomPad
 
@@ -120,28 +136,70 @@ private fun InsulinCarbsBarChart(days: List<DailyMetrics>) {
             val insulinH = chartH * (dm.insulinUnits / normalizer).coerceIn(0f, 1f)
             val carbsH = chartH * ((dm.carbs / 10f) / normalizer).coerceIn(0f, 1f)
 
-            // Insulin bar (left of pair)
+            val insulinBarTop = topPad + chartH - insulinH
+            val carbsBarTop = topPad + chartH - carbsH
+            val insulinBarLeft = groupLeft
+            val carbsBarLeft = groupLeft + singleBarWidth + pairGap
+
+            // Insulin bar
             drawRoundRect(
                 color = INSULIN_COLOR,
-                topLeft = Offset(groupLeft, topPad + chartH - insulinH),
+                topLeft = Offset(insulinBarLeft, insulinBarTop),
                 size = Size(singleBarWidth, insulinH),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f)
+                cornerRadius = CornerRadius(2f)
             )
-            // Carbs bar (right of pair)
+            // Carbs bar
             drawRoundRect(
                 color = CARBS_COLOR,
-                topLeft = Offset(groupLeft + singleBarWidth + pairGap, topPad + chartH - carbsH),
+                topLeft = Offset(carbsBarLeft, carbsBarTop),
                 size = Size(singleBarWidth, carbsH),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f)
+                cornerRadius = CornerRadius(2f)
             )
 
+            // Labels above bars
+            drawIntoCanvas { canvas ->
+                val insulinPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.rgb(25, 118, 210)
+                    textSize = 7.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                val carbsPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.rgb(255, 152, 0)
+                    textSize = 7.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                // Insulin label above insulin bar
+                if (dm.insulinUnits > 0) {
+                    canvas.nativeCanvas.drawText(
+                        "${dm.insulinUnits.toInt()}U",
+                        insulinBarLeft + singleBarWidth / 2f,
+                        insulinBarTop - 3.dp.toPx(),
+                        insulinPaint
+                    )
+                }
+                // Carbs label above carbs bar
+                if (dm.carbs > 0) {
+                    canvas.nativeCanvas.drawText(
+                        "${dm.carbs.toInt()}g",
+                        carbsBarLeft + singleBarWidth / 2f,
+                        carbsBarTop - 3.dp.toPx(),
+                        carbsPaint
+                    )
+                }
+            }
+
+            // Date label below
             if (i % 7 == 0 || i == days.size - 1) {
                 val label = LocalDate.ofEpochDay(dm.dateEpochDay).format(dateFormatter)
-                val m = textMeasurer.measure(label, style = TextStyle(fontSize = 8.sp, color = Color.Gray))
+                val m = textMeasurer.measure(
+                    label,
+                    style = TextStyle(fontSize = 8.sp, color = Color.Gray)
+                )
                 drawText(
                     m,
                     topLeft = Offset(
-                        (groupLeft + totalSlotWidth / 2 - m.size.width / 2).coerceIn(0f, size.width - m.size.width),
+                        (groupLeft + totalSlotWidth / 2 - m.size.width / 2)
+                            .coerceIn(0f, size.width - m.size.width),
                         size.height - bottomPad + 4f
                     )
                 )

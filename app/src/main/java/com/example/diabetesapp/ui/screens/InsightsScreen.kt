@@ -32,6 +32,8 @@ import com.example.diabetesapp.ui.components.insights.CvModal
 import com.example.diabetesapp.ui.components.insights.InsulinCarbsModal
 import com.example.diabetesapp.ui.components.insights.StepsModal
 import com.example.diabetesapp.ui.components.insights.TirModal
+import com.example.diabetesapp.ui.components.insights.TirStackedBar
+import androidx.compose.ui.draw.clip
 import com.example.diabetesapp.utils.HealthConnectHelper
 import com.example.diabetesapp.viewmodel.InsightsViewModelFactory
 
@@ -126,6 +128,16 @@ fun InsightsScreen(modifier: Modifier = Modifier) {
                         }
                     }
 
+                    item {
+                        Text(
+                            "Today's snapshot",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF00897B),
+                            letterSpacing = 0.5.sp,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                        )
+                    }
                     item { TirCard(uiState.yesterday!!, uiState.last7Days, uiState.isCgmUser) }
                     item { CvCard(uiState.yesterday!!, uiState.last30Days) }
                     item { StepsCard(uiState.yesterday!!, uiState.last30Days, isHcConnected) }
@@ -145,37 +157,47 @@ private fun InsightCard(
     onClick: () -> Unit,
     summaryContent: @Composable () -> Unit
 ) {
-    ElevatedCard(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .fillMaxHeight()
+                .background(Color(0xFF00897B), RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp))
+        )
+        ElevatedCard(
+            onClick = onClick,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(start = 4.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = Color(0xFF00897B),
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontSize = 13.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(4.dp))
-                summaryContent()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color(0xFF00897B),
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, fontSize = 13.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    summaryContent()
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Color.LightGray,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = Color.LightGray,
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }
@@ -203,15 +225,25 @@ private fun TirCard(
         onClick = { showModal = true }
     ) {
         if (yesterday.readingCount < 3) {
-            Text("—", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+            Text("—", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
             Text("Log more days to see trends", fontSize = 11.sp, color = Color.Gray)
         } else {
             Text(
                 "${yesterday.tir.toInt()}%",
-                fontSize = 28.sp,
+                fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
                 color = tirColor
             )
+            Spacer(Modifier.height(4.dp))
+            TirStackedBar(
+                tbr = yesterday.tbr,
+                tir = yesterday.tir,
+                tar = yesterday.tar,
+                modifier = Modifier.clip(RoundedCornerShape(4.dp)),
+                heightDp = 8.dp,
+                showLabels = false
+            )
+            Spacer(Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     "▼ ${yesterday.tbr.toInt()}% low",
@@ -263,12 +295,12 @@ private fun CvCard(
         onClick = { showModal = true }
     ) {
         if (yesterday.readingCount < 3) {
-            Text("—", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+            Text("—", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
             Text("Log more days to see trends", fontSize = 11.sp, color = Color.Gray)
         } else {
             Text(
                 "${yesterday.cv.toInt()}%",
-                fontSize = 28.sp,
+                fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
                 color = cvColor
             )
@@ -298,7 +330,7 @@ private fun StepsCard(
     ) {
         Text(
             "${yesterday.steps}",
-            fontSize = 28.sp,
+            fontSize = 34.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF00897B)
         )

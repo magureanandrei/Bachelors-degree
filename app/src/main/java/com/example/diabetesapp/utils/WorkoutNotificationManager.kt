@@ -269,13 +269,23 @@ object WorkoutNotificationManager {
 
     /** Notification 9 — Good Morning (daily 08:00). */
     fun scheduleMorningReminder(context: Context) {
-        val midnight  = midnightMillis()
+        val midnight = midnightMillis()
         val today0800 = midnight + 8 * 3600_000L
         val triggerAt = if (System.currentTimeMillis() < today0800) today0800
-                        else today0800 + 24 * 3600_000L
+        else today0800 + 24 * 3600_000L
+
+        android.util.Log.d("Notif", "scheduleMorningReminder: triggerAt=$triggerAt, " +
+                "now=${System.currentTimeMillis()}, " +
+                "diff=${(triggerAt - System.currentTimeMillis()) / 60000}min from now")
+
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        android.util.Log.d("Notif", "canScheduleExactAlarms=${if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true}")
+
         scheduleAlarm(context, NOTIF_ID_MORNING, triggerAt,
             Intent(context, WorkoutNotificationReceiver::class.java)
                 .putExtra("NOTIFICATION_TYPE", "MORNING"))
+
+        android.util.Log.d("Notif", "scheduleMorningReminder: alarm scheduled")
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
@@ -297,11 +307,14 @@ object WorkoutNotificationManager {
         )
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                android.util.Log.w("Notif", "scheduleAlarm id=$requestCode: NO exact alarm permission, using setWindow")
                 am.setWindow(AlarmManager.RTC_WAKEUP, triggerAt, 60_000L, pi)
             } else {
+                android.util.Log.d("Notif", "scheduleAlarm id=$requestCode: using setExactAndAllowWhileIdle")
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
             }
         } catch (e: SecurityException) {
+            android.util.Log.e("Notif", "scheduleAlarm id=$requestCode: SecurityException — ${e.message}")
             am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi)
         }
     }

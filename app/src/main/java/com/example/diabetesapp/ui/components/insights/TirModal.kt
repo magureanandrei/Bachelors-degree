@@ -1,33 +1,29 @@
 package com.example.diabetesapp.ui.components.insights
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.diabetesapp.data.models.DailyMetrics
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-
-private val TBR_COLOR = Color(0xFFE53935)
-private val TIR_COLOR = Color(0xFF2E7D32)
-private val TAR_COLOR = Color(0xFFF9A825)
 
 @Composable
 fun TirModal(
@@ -59,29 +55,18 @@ fun TirModal(
 
                 Text("Yesterday", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color.Gray)
                 Spacer(Modifier.height(6.dp))
-                TirStackedBar(tbr = yesterday.tbr, tir = yesterday.tir, tar = yesterday.tar)
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "${yesterday.tbr.toInt()}% below",
-                        fontSize = 11.sp,
-                        color = TBR_COLOR,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text("·", fontSize = 11.sp, color = Color.Gray)
-                    Text(
-                        "${yesterday.tir.toInt()}% in range",
-                        fontSize = 11.sp,
-                        color = TIR_COLOR,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text("·", fontSize = 11.sp, color = Color.Gray)
-                    Text(
-                        "${yesterday.tar.toInt()}% above",
-                        fontSize = 11.sp,
-                        color = TAR_COLOR,
-                        fontWeight = FontWeight.Medium
-                    )
+                TirStackedBar(
+                    tbr = yesterday.tbr,
+                    tir = yesterday.tir,
+                    tar = yesterday.tar,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)),
+                    heightDp = 32.dp
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LegendDot(color = TBR_COLOR, label = "${yesterday.tbr.toInt()}% low")
+                    LegendDot(color = TIR_COLOR, label = "${yesterday.tir.toInt()}% in range")
+                    LegendDot(color = TAR_COLOR, label = "${yesterday.tar.toInt()}% above")
                 }
 
                 Spacer(Modifier.height(20.dp))
@@ -116,50 +101,6 @@ fun TirModal(
 }
 
 @Composable
-private fun TirStackedBar(tbr: Float, tir: Float, tar: Float) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(28.dp)) {
-        val w = size.width
-        val h = size.height
-        val tbrW = w * (tbr / 100f).coerceIn(0f, 1f)
-        val tirW = w * (tir / 100f).coerceIn(0f, 1f)
-        val tarW = w - tbrW - tirW
-
-        drawRect(TBR_COLOR, topLeft = Offset(0f, 0f), size = Size(tbrW, h))
-        drawRect(TIR_COLOR, topLeft = Offset(tbrW, 0f), size = Size(tirW, h))
-        drawRect(TAR_COLOR, topLeft = Offset(tbrW + tirW, 0f), size = Size(tarW, h))
-
-        val textSizePx = 11.sp.toPx()
-        val barCenterY = h / 2f + textSizePx / 3f
-
-        data class Seg(val pct: Float, val startX: Float, val segW: Float)
-        val segments = listOf(
-            Seg(tbr, 0f, tbrW),
-            Seg(tir, tbrW, tirW),
-            Seg(tar, tbrW + tirW, tarW)
-        )
-
-        drawIntoCanvas { composeCanvas ->
-            val paint = android.graphics.Paint().apply {
-                color = android.graphics.Color.WHITE
-                textSize = textSizePx
-                textAlign = android.graphics.Paint.Align.CENTER
-                isFakeBoldText = true
-            }
-            segments.forEach { (pct, startX, segW) ->
-                if (pct >= 15f) {
-                    composeCanvas.nativeCanvas.drawText(
-                        "${pct.toInt()}%",
-                        startX + segW / 2f,
-                        barCenterY,
-                        paint
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun TirWeekBars(days: List<DailyMetrics>) {
     val dateFormatter = DateTimeFormatter.ofPattern("M/d")
     val today = LocalDate.now()
@@ -171,12 +112,24 @@ private fun TirWeekBars(days: List<DailyMetrics>) {
         Pair(date, data)
     }
 
-    Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
+    Canvas(modifier = Modifier.fillMaxWidth().height(130.dp)) {
         val count = 7
         val barAreaHeight = size.height - 36f
         val totalWidth = size.width
         val gap = 4f
         val barWidth = (totalWidth / count) - gap
+
+        // Grid lines at 25%, 50%, 75%
+        val gridLines = listOf(0.25f, 0.50f, 0.75f)
+        gridLines.forEach { pct ->
+            val y = barAreaHeight * (1f - pct)
+            drawLine(
+                color = Color(0xFFE0E0E0),
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 0.5.dp.toPx()
+            )
+        }
 
         slots.forEachIndexed { i, (date, dm) ->
             val left = i * (barWidth + gap)
@@ -225,7 +178,7 @@ private fun TirWeekBars(days: List<DailyMetrics>) {
             drawIntoCanvas { canvas ->
                 val paint = android.graphics.Paint().apply {
                     color = android.graphics.Color.GRAY
-                    textSize = 8.sp.toPx()
+                    textSize = 9.sp.toPx()
                     textAlign = android.graphics.Paint.Align.CENTER
                 }
                 canvas.nativeCanvas.drawText(
@@ -236,5 +189,20 @@ private fun TirWeekBars(days: List<DailyMetrics>) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color, CircleShape)
+        )
+        Text(label, fontSize = 11.sp, color = Color.DarkGray)
     }
 }

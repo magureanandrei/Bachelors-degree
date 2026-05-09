@@ -11,7 +11,7 @@ import com.example.diabetesapp.data.dao.DailyMetricsDao
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.DailyMetrics
 
-@Database(entities = [BolusLog::class, DailyMetrics::class], version = 3, exportSchema = false)
+@Database(entities = [BolusLog::class, DailyMetrics::class], version = 4, exportSchema = false)
 abstract class BolusDatabase : RoomDatabase() {
 
     abstract fun bolusLogDao(): BolusLogDao
@@ -20,6 +20,14 @@ abstract class BolusDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: BolusDatabase? = null
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE daily_metrics ADD COLUMN avgBg REAL NOT NULL DEFAULT 0"
+                )
+            }
+        }
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(database: SupportSQLiteDatabase) {
@@ -49,7 +57,7 @@ abstract class BolusDatabase : RoomDatabase() {
                     BolusDatabase::class.java,
                     "bolus_database"
                 )
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                 INSTANCE = instance
                 instance

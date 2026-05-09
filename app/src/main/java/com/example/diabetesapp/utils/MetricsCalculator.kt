@@ -28,6 +28,8 @@ object MetricsCalculator {
             .sumOf { it.carbs }
             .toFloat()
 
+        val avgBg = if (bgReadings.isNotEmpty()) bgReadings.average().toFloat() else 0f
+
         return DailyMetrics(
             dateEpochDay = dateEpochDay,
             tbr = tbr, tir = tir, tar = tar, cv = cv,
@@ -35,7 +37,8 @@ object MetricsCalculator {
             insulinUnits = insulin,
             carbs = carbs,
             readingCount = bgReadings.size,
-            isCgmData = isCgmData
+            isCgmData = isCgmData,
+            avgBg = avgBg
         )
     }
 
