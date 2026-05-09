@@ -71,6 +71,25 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
         }
     }
 
+    suspend fun getStepsForDay(startMillis: Long, endMillis: Long): Long {
+        val startTime = Instant.ofEpochMilli(startMillis)
+        val endTime = Instant.ofEpochMilli(endMillis)
+        return try {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = StepsRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+                )
+            )
+            val total = response.records.sumOf { it.count }
+            Log.d("HC_Steps", "Steps for day $startMillis-$endMillis: $total")
+            total
+        } catch (e: Exception) {
+            Log.e("HC_Steps", "Failed to read steps for day: ${e.message}")
+            0L
+        }
+    }
+
     suspend fun getAverageHeartRateForSession(
         startTime: Instant,
         endTime: Instant
@@ -100,7 +119,7 @@ class HealthConnectHelper(private val client: HealthConnectClient) {
             var sessionSteps = 0L
             var lastEnd: Instant? = null
 
-            val minSessionMinutes = 7L
+            val minSessionMinutes = 10L
             val walkingStepsPerMin = 55.0
             val maxGapMinutes = 10L
 

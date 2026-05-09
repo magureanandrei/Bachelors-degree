@@ -182,8 +182,19 @@ fun CompactLogEntryCard(
                             )
                         }
                     } else {
+                        val isAidAdvisory = log.eventType == "SMART_BOLUS" && log.notes?.startsWith("AID Advisory") == true
                         Column(horizontalAlignment = Alignment.End) {
-                            if (log.administeredDose > 0) {
+                            if (isAidAdvisory) {
+                                Text(
+                                    "Advisory",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF00695C),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .background(Color(0xFFE0F2F1), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            } else if (log.administeredDose > 0) {
                                 Text(
                                     "${String.format(Locale.US, "%.1f", log.administeredDose)}U",
                                     fontSize = 14.sp,

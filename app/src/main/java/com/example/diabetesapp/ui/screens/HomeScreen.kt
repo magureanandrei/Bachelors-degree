@@ -39,6 +39,8 @@ import com.example.diabetesapp.ui.components.IobWidget
 import com.example.diabetesapp.ui.components.LogDetailsDialog
 import com.example.diabetesapp.ui.components.PostWorkoutVerificationDialog
 import com.example.diabetesapp.ui.components.SettingsChangeDivider
+import com.example.diabetesapp.ui.components.SynthesisData
+import com.example.diabetesapp.ui.components.YesterdaySynthesisModal
 import com.example.diabetesapp.ui.components.TimeScaledBgGraph
 import com.example.diabetesapp.utils.CgmReading
 import com.example.diabetesapp.utils.DateTimeUtils
@@ -54,7 +56,9 @@ import kotlinx.coroutines.isActive
 fun HomeScreen(
     modifier: Modifier = Modifier,
     onNavigateToCalculateBolus: () -> Unit = {},
-    onNavigateToLogReading: () -> Unit = {}
+    onNavigateToLogReading: () -> Unit = {},
+    synthesisData: SynthesisData? = null,
+    onSynthesisDismissed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val database = remember { BolusDatabase.getDatabase(context) }
@@ -351,6 +355,10 @@ fun HomeScreen(
     }
 
     // --- MODALS ---
+    synthesisData?.let { data ->
+        YesterdaySynthesisModal(data = data, onDismiss = onSynthesisDismissed)
+    }
+
     selectedLogForModal?.let { log ->
         // Find the joined event for this log
         val joined = remember(todaysLogs) {

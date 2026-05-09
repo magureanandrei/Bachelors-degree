@@ -25,7 +25,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import com.example.diabetesapp.data.database.BolusDatabase
 import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
@@ -105,12 +104,19 @@ fun CalculateBolusScreen(
                     isSportModeActive = inputState.isSportModeActive,
                     minutesUntilSport = inputState.minutesUntilSport,
                     sportLog = inputState.sportReductionLog,
+                    breakdownSteps = inputState.breakdownSteps,
+                    isAid = settings.isAidPump,
+                    enteredCarbs = inputState.carbs.toDoubleOrNull() ?: 0.0,
+                    currentBG = inputState.bloodGlucose.toDoubleOrNull() ?: 0.0,
+                    settings = settings,
+                    rescueCarbs = inputState.rescueCarbs,
+                    selectedFactor = inputState.selectedFactor,
                     onAdjustDose = { delta -> viewModel.adjustSuggestedDose(delta) },
                     onDismiss = { viewModel.dismissResultDialog() },
                     onLogAndSave = {
                         viewModel.logEntry(context)
                         viewModel.dismissResultDialog()
-                        onNavigateBack() // Navigate Back to Home
+                        onNavigateBack()
                     }
                 )
             }

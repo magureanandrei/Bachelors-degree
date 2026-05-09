@@ -25,15 +25,16 @@ enum class TherapyType {
  * Defines the velocity of blood glucose changes from a Continuous Glucose Monitor.
  */
 enum class CgmTrend {
-    DOUBLE_UP, SINGLE_UP, FLAT, SINGLE_DOWN, DOUBLE_DOWN, NONE;
+    DOUBLE_UP, SINGLE_UP, FORTY_FIVE_UP, FLAT, FORTY_FIVE_DOWN, SINGLE_DOWN, DOUBLE_DOWN, NONE;
 
     companion object {
         fun fromString(value: String): CgmTrend = when (value) {
             "↑↑" -> DOUBLE_UP
-            "↑" -> SINGLE_UP
-            "→" -> FLAT
-            "↘" -> SINGLE_DOWN
-            "↓" -> SINGLE_DOWN
+            "↑"  -> SINGLE_UP
+            "↗"  -> FORTY_FIVE_UP
+            "→"  -> FLAT
+            "↘"  -> FORTY_FIVE_DOWN
+            "↓"  -> SINGLE_DOWN
             "↓↓" -> DOUBLE_DOWN
             else -> NONE
         }
@@ -72,13 +73,21 @@ data class PatientContext(
     val dailySteps: Long = 0L,
     val basalDoseToday: Double = 0.0,      // total long-acting units injected today
     val basalDurationHours: Float = 0f,    // duration of their long-acting insulin
-    val hasBasalConfigured: Boolean = false // total long-acting units injected today (MDI only)
-)
+    val hasBasalConfigured: Boolean = false, // total long-acting units injected today (MDI only)
+
+    // 6. Exercise Recovery
+    val hoursSinceLastExercise: Float = -1f,    // -1 = no exercise today
+    val lastExerciseSportType: String = "",      // "Walking", "Aerobic", "Mixed", "Anaerobic"
+    val lastExerciseDurationMins: Int = 0
+) {
+    val exercisedToday: Boolean get() = hoursSinceLastExercise in 0f..24f
+}
 
 // --- THE OUTPUT: What the algorithm gives back to the UI ---
 
 data class ClinicalDecision(
     val suggestedInsulinDose: Double,
     val suggestedRescueCarbs: Int,
-    val clinicalRationale: String // The explanation text to display & save to History
+    val clinicalRationale: String,
+    val breakdownSteps: List<com.example.diabetesapp.algorithm.BreakdownEntry> = emptyList()
 )

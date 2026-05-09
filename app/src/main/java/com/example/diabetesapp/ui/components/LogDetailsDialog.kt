@@ -6,7 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -73,17 +79,26 @@ fun LogDetailsDialog(
                     }
                 } else {
                     // --- STANDARD DIABETES MODAL DETAILS ---
+                    val isAidAdvisory = log.eventType == "SMART_BOLUS" && log.notes?.startsWith("AID Advisory") == true
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Blood Glucose:", color = Color.Gray)
                         Text(if (log.bloodGlucose > 0) "${log.bloodGlucose} mg/dL" else "None", fontWeight = FontWeight.Bold)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Carbohydrates:", color = Color.Gray)
-                        Text(if (log.carbs > 0) "${log.carbs} g" else "None", fontWeight = FontWeight.Bold)
+                        if (isAidAdvisory) {
+                            Text("Advisory Only", fontWeight = FontWeight.Bold, color = Color(0xFF00695C))
+                        } else {
+                            Text(if (log.carbs > 0) "${log.carbs} g" else "None", fontWeight = FontWeight.Bold)
+                        }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Insulin Given:", color = Color.Gray)
-                        Text(if (log.administeredDose > 0) "${String.format(Locale.US, "%.1f", log.administeredDose)} U" else "None", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        if (isAidAdvisory) {
+                            Text("Advisory Only", fontWeight = FontWeight.Bold, color = Color(0xFF00695C))
+                        } else {
+                            Text(if (log.administeredDose > 0) "${String.format(Locale.US, "%.1f", log.administeredDose)} U" else "None", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        }
                     }
                     if (associatedBasal != null) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -103,14 +118,34 @@ fun LogDetailsDialog(
                     Text(log.notes, fontSize = 14.sp, color = Color.DarkGray)
                 }
 
-// Replaced with shared DoseBreakdownCard
                 if (!log.clinicalSuggestion.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    DoseBreakdownCard(
-                        standardDose = log.standardDose ?: 0.0,
-                        suggestedDose = log.suggestedDose ?: 0.0,
-                        rationale = log.clinicalSuggestion
-                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = "Algorithm Rationale",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32),
+                                fontSize = 15.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = log.clinicalSuggestion ?: "",
+                                fontSize = 13.sp,
+                                lineHeight = 20.sp,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
                 }
             }
         },

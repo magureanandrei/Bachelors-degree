@@ -3,6 +3,9 @@ package com.example.diabetesapp.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,7 +43,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.diabetesapp.data.models.BolusLog
-import com.example.diabetesapp.ui.components.DoseBreakdownCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -264,8 +266,19 @@ fun LogEntryCard(
                             )
                         } else {
                             // Normal bolus
+                            val isAidAdvisory = log.eventType == "SMART_BOLUS" && log.notes?.startsWith("AID Advisory") == true
                             Column(horizontalAlignment = Alignment.End) {
-                                if (log.administeredDose > 0) {
+                                if (isAidAdvisory) {
+                                    Text(
+                                        "Advisory",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF00695C),
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier
+                                            .background(Color(0xFFE0F2F1), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                } else if (log.administeredDose > 0) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (log.suggestedDose != log.administeredDose && log.eventType == "SMART_BOLUS") {
                                             Text(
@@ -347,13 +360,27 @@ fun LogEntryCard(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-// Replaced with shared DoseBreakdownCard
                     if (!log.clinicalSuggestion.isNullOrBlank()) {
-                        DoseBreakdownCard(
-                            standardDose = log.standardDose ?: 0.0,
-                            suggestedDose = log.suggestedDose ?: 0.0,
-                            rationale = log.clinicalSuggestion
-                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 200.dp)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = log.clinicalSuggestion ?: "",
+                                    fontSize = 13.sp,
+                                    lineHeight = 20.sp,
+                                    color = Color.DarkGray
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 

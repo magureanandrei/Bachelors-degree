@@ -23,7 +23,7 @@ sealed class BottomNavItem(
     object Home : BottomNavItem("home", Icons.Default.Home, "Home")
     object History : BottomNavItem("history", Icons.Default.FormatListBulleted, "History")
     object Stats : BottomNavItem("stats", Icons.Default.Insights, "Insights")
-    object Education : BottomNavItem("education", Icons.Default.MenuBook, "Learn")
+    object Education : BottomNavItem("education", Icons.Default.MenuBook, "Education")
     object Menu : BottomNavItem("menu", Icons.Default.Menu, "Menu")
 }
 

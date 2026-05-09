@@ -285,6 +285,43 @@ object CgmHelper {
         }
     }
 
+    fun getBgHistoryExtended(days: Int = 30): List<CgmReading> {
+        val count = days * 288
+        val readings = mutableListOf<CgmReading>()
+        return try {
+            val url = URL("http://127.0.0.1:17580/sgv.json?count=$count")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+
+            if (connection.responseCode == 200) {
+                val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                val response = reader.readText()
+                reader.close()
+
+                val jsonArray = JSONArray(response)
+                for (i in 0 until jsonArray.length()) {
+                    val item = jsonArray.getJSONObject(i)
+                    val bgValue = item.optInt("sgv", 0)
+                    val timestamp = item.optLong("date", 0L)
+                    if (bgValue > 0 && timestamp > 0L) {
+                        readings.add(CgmReading(
+                            timestamp = timestamp,
+                            bgValue = bgValue,
+                            trendString = "",
+                            iob = null
+                        ))
+                    }
+                }
+                readings
+            } else emptyList()
+        } catch (e: Exception) {
+            Log.e("CGM_History", "Extended fetch failed: ${e.message}")
+            emptyList()
+        }
+    }
+
     fun findClosestBg(timestamp: Long, cgmReadings: List<CgmReading>): Double {
         val windowMs = 10 * 60 * 1000L
         return cgmReadings

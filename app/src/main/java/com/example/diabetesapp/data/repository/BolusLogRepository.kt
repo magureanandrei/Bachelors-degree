@@ -34,4 +34,12 @@ class BolusLogRepository(private val bolusLogDao: BolusLogDao) {
 
     suspend fun getBasalLogsSince(since: Long): List<BolusLog> =
         bolusLogDao.getBasalLogsSince(since)
+
+    suspend fun getCompletedSportLogsSince(since: Long): List<BolusLog> =
+        bolusLogDao.getCompletedSportLogsSince(since)
+
+    suspend fun getAllLogsImmediate(): List<BolusLog> = bolusLogDao.getAllLogsSnapshot()
+
+    suspend fun getPenLogsAfter(since: Long): List<BolusLog> =
+        bolusLogDao.getPenLogsAfter(since)
 }

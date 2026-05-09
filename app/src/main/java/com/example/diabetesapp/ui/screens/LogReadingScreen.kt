@@ -47,7 +47,7 @@ fun LogReadingScreen(
     val settingsRepository = remember { BolusSettingsRepository.getInstance(context) }
 
     val viewModel: LogReadingViewModel = viewModel(
-        factory = LogReadingViewModelFactory(repository, settingsRepository)
+        factory = LogReadingViewModelFactory(repository, settingsRepository, context)
     )
 
     val uiState by viewModel.uiState.collectAsState()
@@ -325,6 +325,14 @@ fun LogReadingScreen(
                                 unit = "U",
                                 placeholder = "0.0"
                             )
+                            if (settings.isAidPump) {
+                                Text(
+                                    "For emergency corrections only. This bypasses your pump.",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray,
+                                    lineHeight = 16.sp
+                                )
+                            }
                             if (settings.isMdi) {
                                 LargeInputField(
                                     label = "Basal Dose (${settings.basalInsulinType.displayName})",
@@ -528,7 +536,7 @@ fun LogReadingScreen(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            "⚠️ Your pump's won't be accurate while the pen insulin is active — double-dosing can cause severe hypoglycemia.",
+                            "Your pump's won't be accurate while the pen insulin is active — double-dosing can cause severe hypoglycemia.",
                             fontSize = 13.sp,
                             color = Color(0xFFE65100),
                             modifier = Modifier.padding(12.dp),
@@ -618,15 +626,15 @@ fun LogReadingScreen(
                         fontSize = 14.sp
                     )
                     Column {
-                        Text("🏃‍♂️ Aerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
+                        Text("Aerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                         Text("Continuous cardio (running, cycling, swimming). Rapidly burns glucose. Requires the largest reduction in insulin to prevent severe lows.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                     Column {
-                        Text("⚽ Mixed", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
+                        Text("Mixed", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                         Text("Stop-and-go sports (soccer, basketball, tennis). A mix of cardio and adrenaline. Requires a moderate, balanced insulin approach.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                     Column {
-                        Text("🏋️‍♂️ Anaerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
+                        Text("Anaerobic", fontWeight = FontWeight.Bold, color = Color(0xFF00897B))
                         Text("Short, intense bursts (weightlifting, sprinting). Adrenaline spikes can actually RAISE your BG temporarily. Requires minimal insulin reduction.", fontSize = 13.sp, color = Color.DarkGray)
                     }
                 }

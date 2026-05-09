@@ -1,5 +1,6 @@
 package com.example.diabetesapp.viewmodel
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -7,12 +8,15 @@ import androidx.lifecycle.viewModelScope
 import com.example.diabetesapp.data.models.BgFetchStatus
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
-import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.models.CgmTrend
 import com.example.diabetesapp.data.models.PatientContext
+import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper
+import com.example.diabetesapp.utils.WorkoutNotificationManager
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,8 +26,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 import java.util.Calendar
 
 enum class InsightType { ON_TRACK, SUGGESTION, WARNING }
@@ -53,7 +55,8 @@ data class LogReadingState(
 
 class LogReadingViewModel(
     private val repository: BolusLogRepository,
-    private val settingsRepository: BolusSettingsRepository
+    private val settingsRepository: BolusSettingsRepository,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LogReadingState())
@@ -236,42 +239,61 @@ class LogReadingViewModel(
             return
         }
 
+        val contextMessage = when {
+            state.isSportModeActive -> {
+                val base = "Sport logged: ${state.sportType}, ${state.sportDurationMinutes.toInt()} min, ${state.sportIntensity} intensity."
+                if (settings.value.isAidPump) "$base Consider activating Exercise Target on your pump."
+                else base
+            }
+            bg > 0 && carbs == 0.0 && insulin == 0.0 -> "BG check logged: ${bg.toInt()} mg/dL."
+            carbs > 0 && insulin == 0.0 -> "Meal logged: ${carbs.toInt()}g carbs."
+            settings.value.isAidPump && insulin > 0 -> "Pen correction logged: ${insulin}U."
+            insulin > 0 -> "Manual insulin logged: ${insulin}U."
+            else -> "Event logged."
+        }
+
+        val insightType = if (state.isSportModeActive && settings.value.isAidPump) InsightType.SUGGESTION else InsightType.ON_TRACK
+        val insightTitle = when {
+            state.isSportModeActive -> "Sport Event Logged"
+            bg > 0 && carbs == 0.0 && insulin == 0.0 -> "BG Recorded"
+            carbs > 0 && insulin == 0.0 -> "Meal Logged"
+            settings.value.isAidPump && insulin > 0 -> "Pen Correction Logged"
+            insulin > 0 -> "Insulin Recorded"
+            else -> "Event Logged"
+        }
+
         val currentSettings = settings.value
-        val context = PatientContext(
+        val algorithmContext = PatientContext(
             therapyType = currentSettings.therapyTypeEnum,
             bolusSettings = currentSettings,
             currentBG = bg,
             hasCGM = currentSettings.isCgmEnabled,
             cgmTrend = CgmTrend.NONE,
-            activeInsulinIOB = insulin,
+            activeInsulinIOB = 0.0,
             plannedCarbs = carbs,
             isDoingSport = state.isSportModeActive,
             sportType = state.sportType,
             sportIntensity = state.sportIntensityValue.toInt(),
             sportDurationMins = state.sportDurationMinutes.toInt(),
             minutesUntilSport = 0,
+            isHighStress = false,
+            isIllness = false,
+            isExtremeHeat = false,
             timeOfDay = LocalTime.now(),
-            dailySteps = 0L
+            dailySteps = 0L,
+            basalDoseToday = 0.0,
+            basalDurationHours = currentSettings.basalDurationHours,
+            hasBasalConfigured = currentSettings.hasBasalConfigured,
+            hoursSinceLastExercise = -1f,
+            lastExerciseSportType = "",
+            lastExerciseDurationMins = 0
         )
-
-        val decision = AlgorithmEngine.calculateClinicalAdvice(context)
-
-        val insight = when {
-            decision.suggestedRescueCarbs > 0 && carbs < decision.suggestedRescueCarbs ->
-                LogInsight(InsightType.WARNING, "Action Required", decision.clinicalRationale.ifBlank { "You need fast-acting carbs to prevent a low." })
-            state.isSportModeActive && decision.clinicalRationale.contains("Late-Onset") ->
-                LogInsight(InsightType.WARNING, "Post-Sport Alert", decision.clinicalRationale)
-            decision.suggestedInsulinDose > 0.5 && insulin == 0.0 ->
-                LogInsight(InsightType.SUGGESTION, "Insulin Recommended", "The algorithm suggests ${decision.suggestedInsulinDose}U. Consider adjusting your log if you took insulin.")
-            decision.clinicalRationale.isNotBlank() ->
-                LogInsight(InsightType.SUGGESTION, "Insight", decision.clinicalRationale)
-            else ->
-                LogInsight(InsightType.ON_TRACK, "Looking Good!", "Everything is perfectly on track.")
-        }
+        val decision = AlgorithmEngine.calculateClinicalAdvice(algorithmContext)
+        val clinicalSuggestion = decision.clinicalRationale.ifBlank { contextMessage }
 
         _uiState.value = _uiState.value.copy(
-            currentInsight = insight,
-            pendingClinicalSuggestion = decision.clinicalRationale.takeIf { it.isNotBlank() }
+            currentInsight = LogInsight(insightType, insightTitle, contextMessage),
+            pendingClinicalSuggestion = clinicalSuggestion
         )
     }
 
@@ -296,6 +318,16 @@ class LogReadingViewModel(
                         clinicalSuggestion = state.pendingClinicalSuggestion
                     )
                 )
+                appContext?.let { ctx ->
+                    val sportEndTime = timestamp + (state.sportDurationMinutes.toLong() * 60_000L)
+                    WorkoutNotificationManager.schedulePostSportTwoHour(ctx, sportEndTime)
+                    val lastBg = withContext(Dispatchers.IO) { repository.getLatestManualBgLog() }
+                    WorkoutNotificationManager.schedulePostSportEvening(
+                        ctx,
+                        lastBg?.bloodGlucose ?: 0.0,
+                        settings.value.hyperLimit
+                    )
+                }
             } else {
                 val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
                 val carbs = state.carbs.toDoubleOrNull() ?: 0.0
@@ -322,7 +354,16 @@ class LogReadingViewModel(
                     )
                 )
 
-                // After the existing non-sport repository.insert() call:
+                appContext?.let { ctx ->
+                    if (eventType == "MANUAL_PEN" && settings.value.isAidPump) {
+                        WorkoutNotificationManager.schedulePenCorrectionCheck(ctx)
+                    }
+                    if (bg > 0 && !settings.value.isCgmEnabled) {
+                        WorkoutNotificationManager.cancelStaleBgReminder(ctx)
+                        WorkoutNotificationManager.scheduleStaleBgReminder(ctx, timestamp)
+                    }
+                }
+
                 val basalDose = state.basalInsulin.toDoubleOrNull() ?: 0.0
                 if (basalDose > 0) {
                     repository.insert(
@@ -343,6 +384,9 @@ class LogReadingViewModel(
                             clinicalSuggestion = null
                         )
                     )
+                    appContext?.let { ctx ->
+                        WorkoutNotificationManager.cancelMissedBasalReminder(ctx)
+                    }
                 }
             }
 
@@ -354,12 +398,13 @@ class LogReadingViewModel(
 
 class LogReadingViewModelFactory(
     private val repository: BolusLogRepository,
-    private val settingsRepository: BolusSettingsRepository
+    private val settingsRepository: BolusSettingsRepository,
+    private val context: Context? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LogReadingViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return LogReadingViewModel(repository, settingsRepository) as T
+            return LogReadingViewModel(repository, settingsRepository, context?.applicationContext) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

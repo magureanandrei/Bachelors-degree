@@ -3,6 +3,7 @@ package com.example.diabetesapp.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.diabetesapp.algorithm.BreakdownEntry
 import com.example.diabetesapp.data.models.BolusLog
 import com.example.diabetesapp.data.models.BolusSettings
 import com.example.diabetesapp.data.models.CgmTrend
@@ -12,18 +13,23 @@ import com.example.diabetesapp.data.repository.BolusLogRepository
 import com.example.diabetesapp.data.repository.BolusSettingsRepository
 import com.example.diabetesapp.utils.AlgorithmEngine
 import com.example.diabetesapp.utils.CgmHelper.getLatestBgFromXDrip
+import com.example.diabetesapp.utils.IobCalculator
 import com.example.diabetesapp.utils.WorkoutNotificationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 enum class InputMode { MANUAL, CALCULATE }
@@ -60,6 +66,8 @@ data class BolusInputState(
     val minutesUntilSport: Float = 0f,
 
     val sportReductionLog: String = "",
+    val breakdownSteps: List<BreakdownEntry> = emptyList(),
+    val rescueCarbs: Int = 0,
 
     val bloodGlucoseError: String? = null,
     val carbsError: String? = null,
@@ -88,7 +96,38 @@ class CalculateBolusViewModel(
         BolusSettings()
     )
 
-    init { updateCurrentDateTime() }
+    init {
+        updateCurrentDateTime()
+        viewModelScope.launch {
+            settings
+                .filter { it.durationOfAction > 0 }
+                .take(1)
+                .collect { recalculateIob() }
+        }
+    }
+
+    private fun recalculateIob() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val logs = repository.getAllLogsImmediate()
+            val currentSettings = settings.value
+            val latestReading = if (currentSettings.isCgmEnabled) {
+                try { getLatestBgFromXDrip() } catch (e: Exception) { null }
+            } else null
+            val result = IobCalculator.calculate(
+                logs = logs,
+                settings = currentSettings,
+                xdripIob = latestReading?.iob,
+                xdripTimestamp = latestReading?.timestamp
+            )
+            withContext(Dispatchers.Main) {
+                _inputState.value = _inputState.value.copy(
+                    activeInsulin = if (result.totalIob > 0.01)
+                        String.format("%.1f", result.totalIob)
+                    else ""
+                )
+            }
+        }
+    }
 
     private fun updateCurrentDateTime() {
         val now = LocalDateTime.now()
@@ -223,7 +262,7 @@ class CalculateBolusViewModel(
                         _inputState.update { it.copy(
                             bloodGlucose = "", // Clear it so they don't use old data
                             cgmTrendString = "",
-                            warningMessage = "⚠️ No recent reading found (last 20m). Please check sensor or fingerstick."
+                            warningMessage = "No recent reading found (last 20m). Please check sensor or fingerstick."
                         )}
                     }
                 }
@@ -260,48 +299,107 @@ class CalculateBolusViewModel(
     }
 
     private fun performCalculation(showDialog: Boolean) {
-        val state = _inputState.value
-        val currentSettings = settings.value
+        viewModelScope.launch {
+            val lastSport = withContext(Dispatchers.IO) {
+                val todayStart = LocalDate.now()
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+                val recentSportLogs = repository.getCompletedSportLogsSince(todayStart)
+                recentSportLogs
+                    .sortedWith(compareByDescending<BolusLog> {
+                        if (it.sportType == "Walking") 0 else 1
+                    }.thenByDescending { it.sportDuration ?: 0f })
+                    .firstOrNull()
+            }
 
-        val cgmTrend = if (currentSettings.isCgmEnabled)
-            CgmTrend.fromString(state.cgmTrendString)
-        else
-            CgmTrend.NONE
+            val hoursSinceLastExercise = if (lastSport != null) {
+                (System.currentTimeMillis() - lastSport.timestamp) / (1000f * 60f * 60f)
+            } else -1f
 
-        val context = PatientContext(
-            therapyType = currentSettings.therapyTypeEnum,
-            bolusSettings = currentSettings,
-            currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
-            hasCGM = currentSettings.isCgmEnabled,
-            cgmTrend = cgmTrend,
-            activeInsulinIOB = state.activeInsulin.toDoubleOrNull() ?: 0.0,
-            plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
-            isDoingSport = state.isSportModeActive,
-            sportType = state.sportType,
-            sportIntensity = state.sportIntensityValue.toInt(),
-            sportDurationMins = state.sportDurationMinutes.toInt(),
-            minutesUntilSport = state.minutesUntilSport.toInt(),
-            isHighStress = state.selectedFactor == "Stress",
-            isIllness = state.selectedFactor == "Illness",
-            isExtremeHeat = state.selectedFactor == "Heat",
-            timeOfDay = LocalTime.now(),
-            dailySteps = 0L,
-            basalDoseToday = 0.0,  // TODO: sum from DB in future iteration
-            basalDurationHours = currentSettings.basalDurationHours,
-            hasBasalConfigured = currentSettings.hasBasalConfigured
-        )
+            val lastExerciseSportType = lastSport?.sportType ?: ""
+            val lastExerciseDurationMins = lastSport?.sportDuration?.toInt() ?: 0
 
-        val decision = AlgorithmEngine.calculateClinicalAdvice(context)
+            val state = _inputState.value
+            val currentSettings = settings.value
 
-        _inputState.value = _inputState.value.copy(
-            standardDose = (context.plannedCarbs / currentSettings.getCurrentIcr()) + maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf()),
-            calculatedDose = decision.suggestedInsulinDose,
-            userAdjustedDose = decision.suggestedInsulinDose,
-            sportReductionLog = decision.clinicalRationale,
-            warningMessage = if (decision.suggestedRescueCarbs > 0) "⚠️ Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
-            showResult = true,
-            showResultDialog = showDialog
-        )
+            val logs = withContext(Dispatchers.IO) { repository.getAllLogsImmediate() }
+            val latestReading = if (currentSettings.isCgmEnabled) {
+                withContext(Dispatchers.IO) {
+                    try { getLatestBgFromXDrip() } catch (e: Exception) { null }
+                }
+            } else null
+            val iobResult = IobCalculator.calculate(
+                logs = logs,
+                settings = currentSettings,
+                xdripIob = latestReading?.iob,
+                xdripTimestamp = latestReading?.timestamp
+            )
+            val activeIob = iobResult.totalIob
+
+            val cgmTrend = if (currentSettings.isCgmEnabled)
+                CgmTrend.fromString(state.cgmTrendString)
+            else
+                CgmTrend.NONE
+
+            val context = PatientContext(
+                therapyType = currentSettings.therapyTypeEnum,
+                bolusSettings = currentSettings,
+                currentBG = state.bloodGlucose.toDoubleOrNull() ?: 0.0,
+                hasCGM = currentSettings.isCgmEnabled,
+                cgmTrend = cgmTrend,
+                activeInsulinIOB = activeIob,
+                plannedCarbs = state.carbs.toDoubleOrNull() ?: 0.0,
+                isDoingSport = state.isSportModeActive,
+                sportType = state.sportType,
+                sportIntensity = state.sportIntensityValue.toInt(),
+                sportDurationMins = state.sportDurationMinutes.toInt(),
+                minutesUntilSport = state.minutesUntilSport.toInt(),
+                isHighStress = state.selectedFactor == "Stress",
+                isIllness = state.selectedFactor == "Illness",
+                isExtremeHeat = state.selectedFactor == "Heat",
+                timeOfDay = LocalTime.now(),
+                dailySteps = 0L,
+                basalDoseToday = 0.0,  // TODO: sum from DB in future iteration
+                basalDurationHours = currentSettings.basalDurationHours,
+                hasBasalConfigured = currentSettings.hasBasalConfigured,
+                hoursSinceLastExercise = hoursSinceLastExercise,
+                lastExerciseSportType = lastExerciseSportType,
+                lastExerciseDurationMins = lastExerciseDurationMins
+            )
+
+            val recentPenDose = withContext(Dispatchers.IO) {
+                val cutoff = System.currentTimeMillis() -
+                    (currentSettings.durationOfAction * 60 * 60 * 1000).toLong()
+                repository.getPenLogsAfter(cutoff).sumOf { it.administeredDose }
+            }
+
+            val decision = AlgorithmEngine.calculateClinicalAdvice(
+                context,
+                mapOf("recentManualPenDose" to recentPenDose)
+            )
+
+            val standardDose = if (currentSettings.isAidPump) {
+                context.plannedCarbs / currentSettings.getCurrentIcr()
+            } else {
+                (context.plannedCarbs / currentSettings.getCurrentIcr()) +
+                    maxOf(0.0, (context.currentBG - currentSettings.targetBG) / currentSettings.getCurrentIsf())
+            }
+            _inputState.value = _inputState.value.copy(
+                activeInsulin = if (activeIob > 0.01) String.format("%.1f", activeIob) else "",
+                standardDose = standardDose,
+                calculatedDose = decision.suggestedInsulinDose,
+                userAdjustedDose = decision.suggestedInsulinDose,
+                sportReductionLog = decision.breakdownSteps
+                    .filter { it.description.isNotBlank() }
+                    .joinToString("\n\n") { "${it.label}\n${it.description}" },
+                breakdownSteps = decision.breakdownSteps,
+                rescueCarbs = decision.suggestedRescueCarbs,
+                warningMessage = if (decision.suggestedRescueCarbs > 0) "Action Required: Algorithm suggests eating ${decision.suggestedRescueCarbs}g carbs instead of taking insulin." else null,
+                showResult = true,
+                showResultDialog = showDialog
+            )
+        }
     }
 
     fun logEntry(context: android.content.Context) {
@@ -312,24 +410,41 @@ class CalculateBolusViewModel(
         val bg = state.bloodGlucose.toDoubleOrNull() ?: 0.0
         val carbs = state.carbs.toDoubleOrNull() ?: 0.0
         val dose = state.userAdjustedDose ?: state.calculatedDose
+        val currentSettings = settings.value
 
         viewModelScope.launch {
             if (state.isSportModeActive) {
                 // 1. Save CURRENT state (Insulin/BG)
                 if (bg > 0 || carbs > 0 || dose > 0) {
-                    val currentLog = BolusLog(
-                        timestamp = now,
-                        eventType = "SMART_BOLUS",
-                        status = "COMPLETED",
-                        bloodGlucose = bg, carbs = carbs,
-                        standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
-                        isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
-                        notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes,
-                        clinicalSuggestion = state.sportReductionLog,
-                        isHighStress = state.selectedFactor == "Stress",
-                        isIllness = state.selectedFactor == "Illness",
-                        isExtremeHeat = state.selectedFactor == "Heat"
-                    )
+                    val currentLog = if (currentSettings.isAidPump) {
+                        BolusLog(
+                            timestamp = now,
+                            eventType = "SMART_BOLUS",
+                            status = "COMPLETED",
+                            bloodGlucose = bg, carbs = 0.0,
+                            standardDose = 0.0, suggestedDose = 0.0, administeredDose = 0.0,
+                            isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
+                            notes = buildAidNote(carbs, state.rescueCarbs, state.selectedFactor, state.notes),
+                            clinicalSuggestion = state.sportReductionLog,
+                            isHighStress = state.selectedFactor == "Stress",
+                            isIllness = state.selectedFactor == "Illness",
+                            isExtremeHeat = state.selectedFactor == "Heat"
+                        )
+                    } else {
+                        BolusLog(
+                            timestamp = now,
+                            eventType = "SMART_BOLUS",
+                            status = "COMPLETED",
+                            bloodGlucose = bg, carbs = carbs,
+                            standardDose = state.standardDose, suggestedDose = state.calculatedDose, administeredDose = dose,
+                            isSportModeActive = false, sportType = null, sportIntensity = null, sportDuration = null,
+                            notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes,
+                            clinicalSuggestion = state.sportReductionLog,
+                            isHighStress = state.selectedFactor == "Stress",
+                            isIllness = state.selectedFactor == "Illness",
+                            isExtremeHeat = state.selectedFactor == "Heat"
+                        )
+                    }
                     repository.insert(currentLog)
                 }
 
@@ -354,33 +469,90 @@ class CalculateBolusViewModel(
                 val notificationTime = sportStartTimestamp + (state.sportDurationMinutes.toLong() * 60 * 1000L)
                 WorkoutNotificationManager.scheduleNotification(context, notificationTime)
 
+                // Pre-sport reminders
+                WorkoutNotificationManager.schedulePreSport30min(context, sportStartTimestamp)
+                if (!currentSettings.isCgmEnabled) {
+                    WorkoutNotificationManager.schedulePreSportBgCheck(context, sportStartTimestamp)
+                }
+
             } else {
                 // Normal immediate log
-                val log = BolusLog(
-                    timestamp = now,
-                    eventType = "SMART_BOLUS",
-                    status = "COMPLETED",
-                    bloodGlucose = bg,
-                    carbs = carbs,
-                    standardDose = state.standardDose,
-                    suggestedDose = state.calculatedDose,
-                    administeredDose = dose,
-                    isSportModeActive = false,
-                    sportType = null,
-                    sportIntensity = null,
-                    sportDuration = null,
-                    clinicalSuggestion = state.sportReductionLog,
-                    // ADD THESE THREE LINES:
-                    isHighStress = state.selectedFactor == "Stress",
-                    isIllness = state.selectedFactor == "Illness",
-                    isExtremeHeat = state.selectedFactor == "Heat",
-                    // AND UPDATE THE NOTE:
-                    notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes
-                )
+                val log = if (currentSettings.isAidPump) {
+                    BolusLog(
+                        timestamp = now,
+                        eventType = "SMART_BOLUS",
+                        status = "COMPLETED",
+                        bloodGlucose = bg,
+                        carbs = 0.0,
+                        standardDose = 0.0,
+                        suggestedDose = 0.0,
+                        administeredDose = 0.0,
+                        isSportModeActive = false,
+                        sportType = null,
+                        sportIntensity = null,
+                        sportDuration = null,
+                        clinicalSuggestion = state.sportReductionLog,
+                        isHighStress = state.selectedFactor == "Stress",
+                        isIllness = state.selectedFactor == "Illness",
+                        isExtremeHeat = state.selectedFactor == "Heat",
+                        notes = buildAidNote(carbs, state.rescueCarbs, state.selectedFactor, state.notes)
+                    )
+                } else {
+                    BolusLog(
+                        timestamp = now,
+                        eventType = "SMART_BOLUS",
+                        status = "COMPLETED",
+                        bloodGlucose = bg,
+                        carbs = carbs,
+                        standardDose = state.standardDose,
+                        suggestedDose = state.calculatedDose,
+                        administeredDose = dose,
+                        isSportModeActive = false,
+                        sportType = null,
+                        sportIntensity = null,
+                        sportDuration = null,
+                        clinicalSuggestion = state.sportReductionLog,
+                        isHighStress = state.selectedFactor == "Stress",
+                        isIllness = state.selectedFactor == "Illness",
+                        isExtremeHeat = state.selectedFactor == "Heat",
+                        notes = if (state.selectedFactor != "None") "${state.notes} [Factor: ${state.selectedFactor}]".trim() else state.notes
+                    )
+                }
                 repository.insert(log)
+
+                // Post-meal check (no CGM only)
+                if (!currentSettings.isCgmEnabled) {
+                    WorkoutNotificationManager.schedulePostMealCheck(context)
+                }
+                // Reschedule stale BG reminder when a BG reading is included
+                if (bg > 0 && !currentSettings.isCgmEnabled) {
+                    WorkoutNotificationManager.cancelStaleBgReminder(context)
+                    WorkoutNotificationManager.scheduleStaleBgReminder(context, now)
+                }
             }
             resetForm()
         }
+    }
+
+    private fun buildAidNote(carbs: Double, rescueCarbs: Int, selectedFactor: String, notes: String): String {
+        val effectivePumpCarbs = maxOf(0, carbs.toInt() - rescueCarbs)
+        val advisory = when {
+            carbs > 0 && rescueCarbs == 0 -> "AID Advisory: Enter ${carbs.toInt()}g carbs into pump."
+            carbs > 0 && rescueCarbs > 0 -> "AID Advisory: Treat low BG first — eat ${rescueCarbs}g fast-acting carbs before pump entry. Then enter ${effectivePumpCarbs}g into pump."
+            rescueCarbs > 0 -> "AID Advisory: Low BG — eat ${rescueCarbs}g fast-acting carbs. No pump entry needed."
+            else -> ""
+        }
+        return buildString {
+            if (advisory.isNotEmpty()) append(advisory)
+            if (selectedFactor != "None") {
+                if (isNotEmpty()) append(" ")
+                append("[Factor: $selectedFactor]")
+            }
+            if (notes.isNotBlank()) {
+                if (isNotEmpty()) append(" ")
+                append(notes)
+            }
+        }.trim()
     }
 
     private fun resetForm() {

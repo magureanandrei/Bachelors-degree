@@ -15,15 +15,34 @@ data class IobResult(
 object IobCalculator {
 
     /**
-     * Insulin Activity Curve — linear decay model (simple but medically reasonable)
-     * Returns fraction of a dose still active at [minutesAgo] minutes after injection
-     * using the configured duration of action
+     * Insulin Activity Curve — bilinear model (OpenAPS oref0)
+     * Returns fraction of a dose still active at [minutesAgo] minutes after injection.
+     *
+     * The bilinear model assumes insulin activity rises linearly to a peak,
+     * then falls linearly to zero. Peak time scales with DIA at the ratio 75/180
+     * (default: 75 minutes for 3-hour DIA, 100 minutes for 4-hour DIA).
+     *
+     * Source: OpenAPS oref0 (Lewis 2016), based on Walsh insulin action curves.
+     * Formula: https://openaps.readthedocs.io/en/latest/docs/While%20You%20Wait%20For%20Gear/understanding-insulin-on-board-calculations.html
+     *
+     * @param minutesAgo minutes since insulin was administered
+     * @param durationMinutes total duration of insulin action in minutes
+     * @return fraction of insulin still on board (0.0 to 1.0)
      */
     private fun insulinActivityFraction(minutesAgo: Float, durationMinutes: Float): Float {
         if (minutesAgo <= 0f) return 1f
         if (minutesAgo >= durationMinutes) return 0f
-        // Simple linear decay — can upgrade to exponential later
-        return 1f - (minutesAgo / durationMinutes)
+
+        val peak = durationMinutes * (75f / 180f)
+        val t = minutesAgo
+
+        return if (t < peak) {
+            // Before peak: IOB decreases slowly (most insulin still active)
+            1f - (t * t) / (peak * durationMinutes)
+        } else {
+            // After peak: IOB decreases more rapidly
+            (durationMinutes - t) * (durationMinutes - t) / ((durationMinutes - peak) * durationMinutes)
+        }
     }
 
     /**
@@ -64,9 +83,11 @@ object IobCalculator {
 
         return logs.filter { log ->
             val ageMs = now - log.timestamp
-            val isManual = log.notes != "Auto-entry via CareLink"
-                    && log.notes?.startsWith("Auto-imported") != true
-                    && log.notes?.startsWith("Auto-detected") != true
+            val isManual = log.eventType == "MANUAL_PEN"
+                    || log.eventType == "MANUAL_INSULIN"
+                    || (log.notes != "Auto-entry via CareLink"
+                        && log.notes?.startsWith("Auto-imported") != true
+                        && log.notes?.startsWith("Auto-detected") != true)
             log.administeredDose > 0
                     && ageMs >= 0
                     && ageMs <= durationMs
